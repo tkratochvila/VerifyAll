@@ -1,0 +1,21 @@
+﻿<?xml version='1.0' encoding='utf-8'?>
+<SettingsFile xmlns="http://schemas.microsoft.com/VisualStudio/2004/01/settings" CurrentProfile="(Default)" GeneratedClassNamespace="InterLayerLib.Properties" GeneratedClassName="Settings">
+  <Profiles />
+  <Settings>
+    <Setting Name="AutomationServers" Type="System.String" Scope="User">
+      <Value Profile="(Default)">AutomationServers.xml</Value>
+    </Setting>
+    <Setting Name="LogFileName" Type="System.String" Scope="User">
+      <Value Profile="(Default)">log.txt</Value>
+    </Setting>
+    <Setting Name="Ltl" Type="System.String" Scope="User">
+      <Value Profile="(Default)">Ltl.xml</Value>
+    </Setting>
+    <Setting Name="VerificationTools" Type="System.String" Scope="User">
+      <Value Profile="(Default)">VerificationTools.xml</Value>
+    </Setting>
+    <Setting Name="Substitutions" Type="System.String" Scope="User">
+      <Value Profile="(Default)">Substitutions.xml</Value>
+    </Setting>
+  </Settings>
+</SettingsFile>

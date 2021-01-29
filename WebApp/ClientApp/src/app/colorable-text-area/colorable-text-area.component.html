@@ -1,0 +1,6 @@
+<div #cta class="colorableTextArea" (input)="userInput()" contenteditable spellcheck="false">
+    <ng-container *ngFor="let reqPart of requirementParts">
+        <span *ngIf="!reqPart.lineBreak" [class]="reqPart.class">{{reqPart.text}}</span>
+        <br *ngIf="reqPart.lineBreak">
+    </ng-container>
+</div>

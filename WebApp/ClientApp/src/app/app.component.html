@@ -1,0 +1,177 @@
+<div id="bodyFader" *ngIf="activeDialogs.length > 0"></div>
+<div class="modal fade in zTop" [style.display]="activeDialogs.length > 0?'block':'none'">
+    <div class="modal-dialog">
+        <div *ngIf="activeDialogs.length > 0" class="modal-content">
+            <div class="modal-header">
+                <button *ngIf="activeDialogs[0].cancelCallback != null" type="button" class="close" data-dismiss="modal" aria-hidden="true" (click)="activeDialogDismiss(-1);">&times;</button>
+                <h3 class="modal-title">
+                    <i *ngIf="activeDialogs[0].dialogType == _DialogType.confirmation" class="icon icon-badge-alert color-primary"></i>
+                    <i *ngIf="activeDialogs[0].dialogType == _DialogType.warning" class="icon icon-badge-warning color-warning"></i>
+                    <i *ngIf="activeDialogs[0].dialogType == _DialogType.error" class="icon icon-badge-warning color-error"></i> {{activeDialogs[0].title}}
+                </h3>
+            </div>
+            <div class="modal-body">
+                <p>{{activeDialogs[0].text}}</p>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <ng-container *ngFor="let option of activeDialogs[0].options; let i = index">
+                        <div [ngClass]="{'col-md-6':  i != (activeDialogs[0].options.length - 1) || i % 2 != 0, 'col-md-12': i == (activeDialogs[0].options.length - 1) && i % 2 == 0}">
+                            <button type="button" [ngClass]="{'btn': true, 'btn-block': true, 'btn-primary': activeDialogs[0].defaultOptionIdx == null || activeDialogs[0].defaultOptionIdx == i, 'btn-secondary': activeDialogs[0].defaultOptionIdx != null && activeDialogs[0].defaultOptionIdx != i}"
+                                (click)="activeDialogDismiss(i);">{{option.text}}</button>
+                        </div>
+                    </ng-container>
+                    <div class="col-md-12" *ngIf="activeDialogs[0].options.length == 0" style="te">
+                        <button type="button" class="btn btn-block btn-primary" (click)="activeDialogDismiss(-2)">OK</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div [class.disabled]="activeDialogs.length > 0">
+    <div #mt class="navbar-fixed-top">
+        <nav class="navbar">
+            <div class="container">
+                <div class="navbar-header">
+                    <a class="navbar-brand" href="#">
+                        <img src="assets/honeywell-logo.red.svg" class="img-responsive" (click)="test()">
+                        <span>VerifyAll</span>
+                    </a>
+                </div>
+                <div class="collapse navbar-collapse" id="example-navbar-collapse-1">
+                    <ul class="nav navbar-nav navbar-right">
+                        <li [class.active]="scrolledOnRequirements">
+                            <a (click)="scrollToRequirements()">{{editableItemsName}}</a>
+                        </li>
+                        <li [class.active]="scrolledOnResults" *ngIf="verificationResults.cols.length > 0">
+                            <a (click)="scrollToResults()">Verification results</a>
+                        </li>
+                        <li [class.active]="scrolledOnTestCases" *ngIf="testCases.length > 0">
+                            <a (click)="scrollToTestCases()">Test cases</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+        <div class="navBarMarginOccluder zHigh"></div>
+    </div>
+
+    <div #ws id="workSpace">
+        <div #wa id="workArea">
+            <div [ngClass]="{'processing-fill processing-fill-table' : loadingRequirementsNow}"></div>
+            <table class="table table-striped" (mouseleave)="mouseLeavedReqsTable()">
+                <thead>
+                    <tr>
+                        <th class="reqsColumn sticky zHigh" [style.top.px]="navMenuHeight">
+                            {{editableItemsName}}
+                        </th>
+                        <ng-container>
+                            <th class="sticky zHigh" [style.top.px]="navMenuHeight">
+                                {{(activeFileChanged?"*":"") + activeFile}}
+                            </th>
+                            <th class="sticky zHigh table-action-menu" [style.top.px]="navMenuHeight">
+                                <button class="btn btn-icon table-action-menu-btn" type="button">
+                                            <i class="icon icon-doc-add btn-table btn-table-primary" (click)="createFileClick()">
+                                                <span>Create new document</span>
+                                            </i>
+                                        </button>
+                                <input id="image-file" type="file" accept=".clp,.ears,.c,.zip" class="loadFile" (change)="uploadFile($event.target.files)" multiple>
+                                <button class="btn btn-icon table-action-menu-btn" type="button">
+                                            <i class="icon icon-file-upload btn-table btn-table-primary" (click)="uploadFileClick()">
+                                                <span>Upload document</span>
+                                            </i>
+                                            
+                                        </button>
+                                <button class="btn btn-icon table-action-menu-btn" type="button" *ngIf="activeFile.length > 0">
+                                            <i class="icon icon-file-download btn-table btn-table-primary" (click)="downloadFileClick()">
+                                                <span>Download current document</span>
+                                            </i>
+                                        </button>
+                                <button class="btn btn-icon table-action-menu-btn" type="button" *ngIf="activeFile.length > 0">
+                                            <i class="icon icon-close btn-table btn-table-close" (click)="closeFileClick()">
+                                                <span>Close current document</span>
+                                            </i>
+                                        </button>
+                            </th>
+                        </ng-container>
+                    </tr>
+                </thead>
+                <tbody>
+                    <div *ngIf="requirements.length > 0" class="lastAddNewReqPlaceholder"></div>
+                    <ng-container *ngFor="let req of requirements; let i = index">
+                        <tr (mouseenter)="mouseEnteredReqsTableRow(i)">
+                            <td colspan="2">
+                                <app-colorable-text-area [(text)]="requirements[i].text" [focusEvent]=requirements[i].focusEvent (userTextInput)="requirementChangedByUser(i)"></app-colorable-text-area>
+                            </td>
+                            <td class="horizontalyCenterText">
+                                <span *ngIf="i == 0" [hidden]="mouseReqIndex != 0">
+                                    <i class="icon icon-add addNewReqTop actionIcon zMediumHigh" (click)="addRequirement(0)"></i>
+                                </span>
+                                <i class="icon icon-delete actionIcon" (click)="requestDeleteRequirement(i)"></i>
+                                <span [hidden]="mouseReqIndex != i && mouseReqIndex != i + 1">
+                                    <i class="icon icon-add addNewReqBottom actionIcon zMediumHigh" (click)="addRequirement(i+1)"></i>
+                                </span>
+                            </td>
+                        </tr>
+                    </ng-container>
+                    <div *ngIf="requirements.length > 0" class="lastAddNewReqPlaceholder"></div>
+                </tbody>
+            </table>
+        </div>
+        <div #ra id="resultsArea">
+            <div [ngClass]="{'processing-fill processing-fill-table' : analyzingNow}"></div>
+            <table id="verificationTable" class="table table-striped">
+                <thead>
+                    <tr>
+                        <th class="sticky zHigh" [style.top.px]="navMenuHeight" *ngFor="let col of verificationResults.cols; let i = index">
+                            {{col}}
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr *ngFor="let row of verificationResults.rows">
+                        <ng-container *ngFor="let cell of row">
+                            <td [ngClass]="cell.flags">{{cell.value}}</td>
+                        </ng-container>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div #tca id="testCasesArea">
+            <div [ngClass]="{'processing-fill processing-fill-table' : testCasesGenerationInProgress}"></div>
+            <table id="testCasesTable" class="table table-striped">
+                <thead>
+                    <tr *ngIf="testCases.length > 0">
+                        <th class="sticky zHigh" [style.top.px]="navMenuHeight" colspan="2">Test cases</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr *ngFor="let testCase of testCases">
+                        <td>{{testCase}}</td>
+                        <td style="text-align: right;">
+                            <a class="btn btn-secondary" [href]="'/api/FileDownload/?fileName=' + testCase" download>
+                                Download
+                                <i class="icon icon-download"></i>
+                            </a>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div #baa id="ButtonAnalyzeArea" class="zHighest">
+            <button id="ButtonAnalyze" class="btn btn-primary" *ngIf="requirements.length > 0 && !(analyzingNow || testCasesGenerationInProgress)" (click)="analyzeClick()">Analyze</button>
+            <button id="ButtonAnalyze" class="btn btn-secondary processing-fill processing-fill-btn-secondary" (click)="stopAnalyzeClick()" *ngIf="analyzingNow || testCasesGenerationInProgress">
+                <i class="icon icon-close"></i>
+                Stop analyzing
+            </button>
+        </div>
+        <div #saa class="substituted"></div>
+        <div class="itemsChangedWarning" *ngIf="this.analysisNotForCurrentItems && (verificationResults.cols.length > 0 || testCases.length > 0)">
+            <i class="icon icon-badge-alert warningIcon"></i> Analysis might not correspond to items in editor!
+        </div>
+    </div>
+</div>
+
+
+<router-outlet></router-outlet>

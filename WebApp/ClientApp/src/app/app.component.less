@@ -1,0 +1,425 @@
+@primaryBasicColor : #1792E5;
+@lightenedWeight : 20%;
+@darkenedWeight : 20%;
+@primaryBasicColorLightened : mix(#FFFFFF, @primaryBasicColor, @lightenedWeight);
+@primaryBasicColorDarkened : mix(#000000, @primaryBasicColor, @darkenedWeight);
+
+@warningColor : #FFBF00;
+@errorColor: red;
+
+// @rgbaBlend(@backgroundColor: #AAAAAAAA, @foregroundColor: #BBBBBBBB) : rgba(
+//     red(@backgroundColor)*alpha(@backgroundColor)*(1-alpha(@foregroundColor)) + red(@foregroundColor)*alpha(@foregroundColor),
+//     green(@backgroundColor)*alpha(@backgroundColor)*(1-alpha(@foregroundColor)) + green(@foregroundColor)*alpha(@foregroundColor),
+//     blue(@backgroundColor)*alpha(@backgroundColor)*(1-alpha(@foregroundColor)) + blue(@foregroundColor)*alpha(@foregroundColor),
+//     alpha(@backgroundColor)*(1-alpha(@foregroundColor)) + alpha(@foregroundColor)
+// );
+
+span.red {
+color: red;
+}
+
+.color-primary {
+    color: @primaryBasicColor;
+}
+
+.color-error {
+    color: @errorColor;
+}
+
+.color-warning {
+    color: @warningColor;
+}
+
+#bodyFader {
+    background-color: #AAAAAAAA;
+    position: absolute;
+    left: 0px;
+    top: 0px;
+    width: 100%;
+    height: 100%;
+    z-index: 10001;
+}
+
+.loadFile {
+    // position: absolute;
+    // right: 20px;
+    display: none;
+}
+
+#ButtonAnalyzeArea {
+    position : fixed;
+    bottom : 0px;
+    right : 0px;
+}
+#ButtonAnalyzeArea button {
+    margin : 10px;
+    position:relative;
+}
+
+.actionIcon {
+    color: @primaryBasicColor;
+    font-weight: bold;
+}
+
+.actionIcon:hover {
+    color:@primaryBasicColorDarkened;
+}
+
+.warningIcon {
+    color: @warningColor;
+    font-weight: bold;
+}
+
+@iconFontSize: calc(20px + 1vw);
+
+.addNewReqBottom {
+    position: absolute;
+    left: 50%;
+    transform: translate(-50%, 50%);
+    bottom: 0px;
+    font-size: @iconFontSize;
+}
+
+.addNewReqTop {
+    position: absolute;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    top: 0px;
+    font-size: @iconFontSize;
+}
+
+.interTableNullSpace {
+    position : relative;
+    width: 100%;
+    height: 0px;
+}
+
+.lastAddNewReqPlaceholder {
+    position : relative;
+    width: 100%;
+    height: calc(@iconFontSize / 2);
+}
+
+tr td {
+    position : relative;
+}
+
+.reqsColumn {
+    width: 100%;
+}
+
+.mainToolbar {
+    position : fixed;
+    top : 0px;
+    left : 0px;
+    width: 100%;
+    z-index: 1030;
+}
+
+#workSpace {
+    position: relative;
+}
+
+#resultsArea {
+    position: relative;
+}
+
+.sticky {
+    position:sticky;
+    position:-webkit-sticky;
+}
+
+@navbarMarginBottom : 20px;
+
+.navBarMarginOccluder {
+    height: @navbarMarginBottom;
+    width: 100%;
+    transform: translateY(-@navbarMarginBottom);
+    position: absolute;
+    background-color: #fff;
+}
+
+.zMediumHigh {
+    z-index: 900;
+}
+
+.zHigh {
+    z-index: 1000;
+}
+
+.zHighest {
+    z-index: 10000;
+}
+
+.zTop {
+    z-index: 100000;
+}
+
+
+@requestedDarkening : 16;
+
+@realizableR : 144;
+@realizableG : 238;
+@realizableB : 144;
+@realizableMaximumDarkening : min(@realizableR, @realizableG, @realizableB);
+@realizableRealDarkening : min(@requestedDarkening, @realizableMaximumDarkening);
+@realizableDarkenedR : @realizableR - @realizableRealDarkening;
+@realizableDarkenedG : @realizableG - @realizableRealDarkening;
+@realizableDarkenedB : @realizableB - @realizableRealDarkening;
+
+@violatingR : 240;
+@violatingG : 128;
+@violatingB : 128;
+@violatingMaximumDarkening : min(@violatingR, @violatingG, @violatingB);
+@violatingRealDarkening : min(@requestedDarkening, @violatingMaximumDarkening);
+@violatingDarkenedR : @violatingR - @violatingRealDarkening;
+@violatingDarkenedG : @violatingG - @violatingRealDarkening;
+@violatingDarkenedB : @violatingB - @violatingRealDarkening;
+
+@violatingnextR : 255;
+@violatingnextG : 105;
+@violatingnextB : 180;
+@violatingnextMaximumDarkening : min(@violatingnextR, @violatingnextG, @violatingnextB);
+@violatingnextRealDarkening : min(@requestedDarkening, @violatingnextMaximumDarkening);
+@violatingnextDarkenedR : @violatingnextR - @violatingnextRealDarkening;
+@violatingnextDarkenedG : @violatingnextG - @violatingnextRealDarkening;
+@violatingnextDarkenedB : @violatingnextB - @violatingnextRealDarkening;
+
+@rootunrealizabilityR : 238;
+@rootunrealizabilityG : 130;
+@rootunrealizabilityB : 238;
+@rootunrealizabilityMaximumDarkening : min(@rootunrealizabilityR, @rootunrealizabilityG, @rootunrealizabilityB);
+@rootunrealizabilityRealDarkening : min(@requestedDarkening, @rootunrealizabilityMaximumDarkening);
+@rootunrealizabilityDarkenedR : @rootunrealizabilityR - @rootunrealizabilityRealDarkening;
+@rootunrealizabilityDarkenedG : @rootunrealizabilityG - @rootunrealizabilityRealDarkening;
+@rootunrealizabilityDarkenedB : @rootunrealizabilityB - @rootunrealizabilityRealDarkening;
+
+@redundantR : 255;
+@redundantG : 165;
+@redundantB : 16;
+@redundantMaximumDarkening : min(@redundantR, @redundantG, @redundantB);
+@redundantRealDarkening : min(@requestedDarkening, @redundantMaximumDarkening);
+@redundantDarkenedR : @redundantR - @redundantRealDarkening;
+@redundantDarkenedG : @redundantG - @redundantRealDarkening;
+@redundantDarkenedB : @redundantB - @redundantRealDarkening;
+
+table#verificationTable tbody tr td.realizable
+{
+    color: green;
+}
+
+table#verificationTable tbody tr td.DefectAnalysis
+{
+    color: red;
+}
+
+table#verificationTable tbody tr:nth-of-type(odd) td.Realizable
+{
+    background-color: rgb(@realizableR, @realizableG, @realizableB);
+}
+
+table#verificationTable tbody tr:nth-of-type(even) td.Realizable
+{
+    background-color: rgb(@realizableDarkenedR, @realizableDarkenedG, @realizableDarkenedB);
+}
+
+table#verificationTable tbody tr:nth-of-type(odd) td.Violating
+{
+    background-color: rgb(@violatingR, @violatingG, @violatingB);
+}
+
+table#verificationTable tbody tr:nth-of-type(even) td.Violating
+{
+    background-color: rgb(@violatingDarkenedR, @violatingDarkenedG, @violatingDarkenedB);
+}
+
+table#verificationTable tbody tr:nth-of-type(odd) td.ViolatingNext
+{
+    background-color: rgb(@violatingnextR, @violatingnextG, @violatingnextB);
+}
+
+table#verificationTable tbody tr:nth-of-type(even) td.ViolatingNext
+{
+    background-color: rgb(@violatingnextDarkenedR, @violatingnextDarkenedG, @violatingnextDarkenedB);
+}
+
+table#verificationTable tbody tr:nth-of-type(odd) td.RootUnrealizability
+{
+    background-color: rgb(@rootunrealizabilityR, @rootunrealizabilityG, @rootunrealizabilityB);
+}
+
+table#verificationTable tbody tr:nth-of-type(even) td.RootUnrealizability
+{
+    background-color: rgb(@rootunrealizabilityDarkenedR, @rootunrealizabilityDarkenedG, @rootunrealizabilityDarkenedB);
+}
+
+table#verificationTable tbody tr:nth-of-type(odd) td.Redundant
+{
+    background-color: rgb(@redundantR, @redundantG, @redundantB);
+}
+
+table#verificationTable tbody tr:nth-of-type(even) td.Redundant
+{
+    background-color: rgb(@redundantDarkenedR, @redundantDarkenedG, @redundantDarkenedB);
+}
+
+table#verificationTable tbody tr td.Neutral
+{
+    color: black;
+}
+
+table#verificationTable tbody tr td.NoDefectLimited
+{
+    color: darkgoldenrod;
+}
+
+table#verificationTable tbody tr td.NoDefect
+{
+    color: green
+}
+
+table#verificationTable tbody tr td.Defect
+{
+    color: red;
+}
+
+.processing-fill-table {
+    background: linear-gradient(90deg, #FFFFFF00, #FFFFFF00, mix(#FFFFFFFF, #FFFFFF01, @lightenedWeight), #FFFFFF00, #FFFFFF00);
+    background-size: 400% 100%;
+    background-repeat: no-repeat;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    z-index: 9999;
+    pointer-events: none;
+}
+
+.processing-fill-btn-primary {
+    background: linear-gradient(90deg,@primaryBasicColor, @primaryBasicColor, @primaryBasicColorLightened, @primaryBasicColor, @primaryBasicColor);
+    background-size: 400% 100%;
+    background-repeat: no-repeat;
+}
+
+.processing-fill-btn-primary:hover {
+    background: linear-gradient(90deg,@primaryBasicColorDarkened, @primaryBasicColorDarkened,  @primaryBasicColor, @primaryBasicColorDarkened, @primaryBasicColorDarkened);
+    background-size: 400% 100%;
+    background-repeat: no-repeat;
+}
+
+.processing-fill-btn-secondary {
+    background: linear-gradient(90deg, #FFFFFF, #FFFFFF, mix(@primaryBasicColor, #FFFFFF, @lightenedWeight), #FFFFFF, #FFFFFF);
+    background-size: 400% 100%;
+    background-repeat: no-repeat;
+}
+
+@processing-fill-duration : 2s;
+
+.processing-fill {
+    -webkit-animation: processingFillAnimation @processing-fill-duration ease infinite;
+    -moz-animation: processingFillAnimation @processing-fill-duration ease infinite;
+    -o-animation: processingFillAnimation @processing-fill-duration ease infinite;
+    animation: processingFillAnimation @processing-fill-duration ease infinite;
+}
+
+@-webkit-keyframes processingFillAnimation {
+    0%{background-position-x:100%}
+    100%{background-position-x:0%}
+}
+@-moz-keyframes processingFillAnimation {
+    0%{background-position-x:100%}
+    100%{background-position-x:0%}
+}
+@-o-keyframes processingFillAnimation {
+    0%{background-position-x:100%}
+    100%{background-position-x:0%}
+}
+@keyframes processingFillAnimation {
+    0%{background-position-x:100%}
+    100%{background-position-x:0%}
+}
+
+.disabled {
+    pointer-events: none;
+}
+
+@keyframes itemsChangedWarningAnimation {
+    0%{background-color:#FFFFFF00; opacity: 0;}
+    20%{background-color:#FFFFFFAA; opacity: 1;}
+    80%{background-color:#FFFFFFAA; opacity: 1;}
+    100%{background-color:#FFFFFF00; opacity: 0.2;}
+}
+
+.itemsChangedWarning {
+    position : fixed;
+    bottom : 0px;
+    left : 0px;
+    margin : 10px;
+    padding: 10px;
+    border-width: thin;
+    border-color: @warningColor;
+    border-style: solid;
+    animation: itemsChangedWarningAnimation 5s;
+    -webkit-animation: itemsChangedWarningAnimation 5s;
+    -moz-animation: itemsChangedWarningAnimation 5s;
+    -o-animation: itemsChangedWarningAnimation 5s;
+    opacity: 0.2;
+    background-color: #FFFFFF00;
+    transition: opacity 0.3s, background-color 0.3s;
+    -webkit-transition: opacity 0.3s, background-color 0.3s;
+    -o-transition: opacity 0.3s, background-color 0.3s;
+    z-index: 9999;
+}
+
+.itemsChangedWarning:hover {
+    opacity: 1;
+    background-color: #FFFFFFAA;
+}
+
+.btn-table {
+    border-radius: 50%;
+    position: relative;
+    color: white;
+    padding: 20%;
+}
+
+.btn-table-primary {
+    background-color: @primaryBasicColor;
+}
+
+.btn-table-close {
+    background-color: red;
+}
+
+.table-action-menu {
+  display: flex;
+  flex-direction: row;
+}
+
+.btn-table  span {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    padding: 20%;
+    background-color: white;
+    color: black;
+    opacity: 0;
+    transform: translate(-100%, -50%);
+    transition: opacity 0.3s ease;
+    transition-delay: 0s;
+    -webkit-transition: opacity 0.3s ease;
+    -webkit-transition-delay: 0s;
+    -o-transition: opacity 0.3s ease;
+    -o-transition-delay: 0s;
+    pointer-events: none;
+}
+
+.btn-table:hover  span {
+    opacity: 1;
+    transition-delay: 1.5s;
+    -webkit-transition-delay: 1.5s;
+    -o-transition-delay: 1.5s;
+}
+
+.horizontalyCenterText {
+    text-align: center;
+}
