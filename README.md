@@ -2,13 +2,13 @@
 Verification web client that allows automated semantic requirement analysis and formal verification of requirements against C and C++ source codes.
 Does not work standalone, needs verification server that contains formal methods tools.
 
-Automated formal verification process and formal tools:
+Automated formal verification process and formal methods:
 
-![Automated formal verification process and formal tools](https://github.com/tkratochvila/VerifyAll/blob/main/WebApp/Imgs/Aufover-cile2.png?raw=true)
+![Automated formal verification process and formal methods](https://github.com/tkratochvila/VerifyAll/blob/main/WebApp/Imgs/Aufover-cile2.png?raw=true)
 
-The OSLC specification used:
+The integration of complete verification platform as deployed in Honeywell for both testing and production servers:
 
-![The OSLC specification used](https://github.com/tkratochvila/VerifyAll/blob/main/WebApp/Imgs/Aufover-OSLC.png?raw=true)
+![The integration of complete verification platform as deployed in Honeywell for both testing and production servers](https://github.com/tkratochvila/VerifyAll/blob/main/WebApp/Imgs/AUFOVER-Security.png?raw=true)
 
 # Developer settup guide
 The webapp project counts on using full IIS that is part of an windows 10 & 8 operating systems.
