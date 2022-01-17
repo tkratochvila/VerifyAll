@@ -31,7 +31,7 @@ namespace InterLayerLib
         /// <changed>MiD,2019-04-01</changed>
         public void cancelVerification()
         {
-            // TODO: possibly clear tasks too?
+            // TODO: possibly EARS tasks too?
             if (headWorkspace != null && headWorkspace.status == ServerWorkspace.Status.ACTIVE)
                 headWorkspace.destroy();
         }
@@ -52,6 +52,108 @@ namespace InterLayerLib
                         new VerificationTask(checker.requirementsGroupsToBeVerified[kk], tool));
             verificationToolBag = bag;
         }
+
+        ///// <summary>
+        ///// Creates Automation Plan and Request OSLC XML file.
+        ///// This should be then sent to the automation/verification server.
+        ///// Basically instantiates the OSLC template with the files to be verified.
+        ///// </summary>
+        ///// <param name="numberOfProperties">number of groups of formal requirements to be verified</param>
+        ///// <param name="workspace">head automation server</param>
+        ///// <param name="allSMVLTLSPEC">list of all SMV LTLSPEC formulas</param>
+        //public void createAutomationPlanAndRequest(string numberOfProperties, ServerWorkspace workspace, List<Tuple<string, string>> allSMVLTLSPEC)
+        //{
+        //    string userName = System.Security.Principal.WindowsIdentity.GetCurrent().Name;
+        //    string name;
+        //    // In case of sanity checking of requirements use "requirements" name
+        //    if (sm.exists())
+        //    {
+        //        if (sm.systempaths.Count > 1)
+        //            name = sm.getSystemNames();
+        //        else
+        //            name = Path.GetFileNameWithoutExtension(sm.systemname);
+        //    }
+        //    else
+        //        name = "requirements";
+        //    string seconds = Math.Round((DateTime.Now - new DateTime(2013, 1, 1)).TotalSeconds).ToString();
+        //    string content =
+        //        @"<rdf:RDF xmlns:rdf='http://www.w3.org/2000/xmlns'" +
+        //                   " xmlns:oslc_auto='http://open-services.net/ns/auto#'" +
+        //                   " xmlns:oslc_rm='http://open-services.net/ns/rm/'" +
+        //                   " xmlns:dcterms='http://purl.org/dc/terms/'" +
+        //                   " xmlns:oslc='http://open-services.net/ns/core#'>" + Environment.NewLine +
+
+        //             "<oslc_auto:AutomationPlan rdf:about='http://" + workspace.server.address + "/verificationPlanAndRequest" + seconds + ".xml'>" + Environment.NewLine +
+        //             "<dcterms:title>Verification of the " + name + "</dcterms:title>" + Environment.NewLine +
+        //             "<dcterms:created>" + DateTime.Now.ToString() + "</dcterms:created>" + Environment.NewLine +
+        //             "<dcterms:identifier>'" + seconds + "'</dcterms:identifier>" + Environment.NewLine +
+        //             "<dcterms:creator rdf:resource='" + userName + "'/>" + Environment.NewLine;
+        //    if (sm.exists())
+        //    {
+        //        if (ToolKit.isCFilename(sm.systempath))
+        //        {
+        //            int reqIndex = 0; // the verification server chooses the .bc with reqIndex that match the propertyIndex given in HTTP URL address
+        //            foreach (string path in sm.systempaths)
+        //            {
+        //                name = Path.GetFileNameWithoutExtension(path);
+        //                content += "<oslc_rm:VerifLLVM dcterms:identifier='" + reqIndex++ + "' rdf:about='http://" + workspace.getURL() + "/" + Path.GetFileName(path) + "' oslc:shortTitle='" + name + "'/>" + Environment.NewLine;
+        //            }
+        //        }
+        //        else
+        //        {
+        //            content +=
+        //             "<oslc_rm:VerifSMV rdf:about='http://" + workspace.getURL() + "/" + name + ".smv' oslc:shortTitle='" + name + "' dcterms:identifier='1'>" + Environment.NewLine +
+        //                "<dcterms:title>SMV model</dcterms:title>" + Environment.NewLine +
+        //             "</oslc_rm:VerifSMV>" + Environment.NewLine +
+        //             "<oslc_rm:VerifModel rdf:about='http://" + workspace.getURL() + "/" + name + ".cpp' oslc:shortTitle='" + name + "' dcterms:identifier='1'>" + Environment.NewLine +
+        //                "<dcterms:title>CESMI model</dcterms:title>" + Environment.NewLine +
+        //             "</oslc_rm:VerifModel>" + Environment.NewLine +
+        //             "<oslc_rm:VerifModelSup rdf:about='http://" + workspace.getURL() + "/" + name + ".inc' oslc:shortTitle='" + name + "' dcterms:identifier='1'>" + Environment.NewLine +
+        //                "<dcterms:title>Propositions</dcterms:title>" + Environment.NewLine +
+        //                "<dcterms:parameters rdf:string='-r'/>" + Environment.NewLine +
+        //             "</oslc_rm:VerifModelSup>" + Environment.NewLine;
+        //        }
+
+        //    }
+        //    else // Requirement Semantic Analysis only
+        //    {
+        //        content +=
+        //           "<oslc_rm:VerifIO rdf:about='http://" + workspace.getURL() + "/" + name + ".part' oslc:shortTitle='" + name + "' dcterms:identifier='1'>" + Environment.NewLine +
+        //                  "<dcterms:title>Input and Output Signal Partitioning</dcterms:title>" + Environment.NewLine +
+        //                  "<dcterms:description>" + Environment.NewLine +
+        //                         sm.variablePartitioning +
+        //                  "</dcterms:description>" + Environment.NewLine +
+        //           "</oslc_rm:VerifIO>" + Environment.NewLine;
+        //    }
+        //    content +=
+        //         "<oslc_rm:VerifProperty rdf:about='http://" + workspace.getURL() + "/" + name + ".ltl' oslc:shortTitle='" + name + "' dcterms:identifier='1' numberOfProperties='" + numberOfProperties + "'>" + Environment.NewLine +
+        //            "<dcterms:title>LTL Properties</dcterms:title>" + Environment.NewLine +
+        //              "<dcterms:description>" + Environment.NewLine +
+        //                "all SMV LTL SPEC" +
+        //              "</dcterms:description>" + Environment.NewLine +
+        //         "</oslc_rm:VerifProperty>" + Environment.NewLine +
+        //         "</oslc_auto:AutomationPlan>" + Environment.NewLine +
+        //         "<oslc_auto:AutomationRequest>" + Environment.NewLine +
+        //           "<dcterms:title>Verification of the " + name + "</dcterms:title>" + Environment.NewLine +
+        //           "<dcterms:identifier>'" + seconds + "'</dcterms:identifier>" + Environment.NewLine +
+        //           "<oslc_auto:state rdf:resource='http://open-services.net/ns/auto#new'/>" + Environment.NewLine +
+        //           "<oslc_auto:executesAutomationPlan rdf:resource='http://" + workspace.getURL() + "/verificationPlanAndRequest" + seconds + ".xml'/>" + Environment.NewLine +
+        //         "</oslc_auto:AutomationRequest>" + Environment.NewLine +
+        //         "</rdf:RDF>";
+
+        //    foreach (var element in allSMVLTLSPEC)
+        //    {
+        //        content = content.Replace("all SMV LTL SPEC", "<oslc_rm:validatedBy dcterms:identifier='" + allSMVLTLSPEC.IndexOf(element) + "' dcterms:description='" + element.Item2 + "' rdf:ID='" + element.Item1 + "'/>" + Environment.NewLine + "all SMV LTL SPEC");
+        //    }
+        //    content = content.Replace('\'', '"');
+        //    content = content.Replace("all SMV LTL SPEC", "");
+        //    //if (systemModel.exists() && !isCFilename(systemModel.systempath))
+        //    plan = new InputFile();
+        //    plan.fillFromString((sm.exists()
+        //                         ? Path.Combine(Path.GetDirectoryName(sm.systempath), "verificationPlanAndRequest.xml")
+        //                         : Path.Combine(Directory.GetCurrentDirectory(), "verificationPlanAndRequest.xml")),
+        //        content);
+        //}
 
         /// <summary>
         /// Are there any concurrent verification tasks?
@@ -256,8 +358,8 @@ namespace InterLayerLib
                     satisfiabilityOverallResult = satisfiabilityOverallResult.Remove(ToolKit.ReplaceFirst(satisfiabilityOverallResult, "Conflict occurs, ", "").IndexOf("Conflict occurs, ") + "Conflict occurs, ".Length); // leave just the first one
                 if (systemModel.reqs.isPrioritized())
                 {
-                    satisfiabilityResults = satisfiabilityResults.Replace("When condition in requirement ", "The rule ").Replace(" is true, conflict occurs.", " cannot be fired, conflict occurs.");
-                    satisfiabilityOverallResult = satisfiabilityOverallResult.Replace("When condition in requirement ", "The rule ").Replace(" is true, conflict occurs.", " cannot be fired, conflict occurs.");
+                    satisfiabilityResults = satisfiabilityResults.Replace("When condition in requirement ", "The rule ").Replace(" is true, conflict occurs.", " cannot be fired. Therefore, it is a dead code.");
+                    satisfiabilityOverallResult = satisfiabilityOverallResult.Replace("When condition in requirement ", "The rule ").Replace(" is true, conflict occurs.", " cannot be fired. Therefore, it is a dead code.");
                 }
             }
             if (!summCreated)

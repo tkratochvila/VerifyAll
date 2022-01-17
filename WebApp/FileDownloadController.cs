@@ -10,13 +10,13 @@ namespace webApp
 {
     public class FileDownloadController : ApiController
     {
-        public HttpResponseMessage Get(string fileName)
+        public HttpResponseMessage Get(string fileName, string session)
         {
             HttpRequestMessage request = this.Request;
 
             HttpResponseMessage response = Request.CreateResponse(HttpStatusCode.OK);
 
-            var dataBytes = File.ReadAllBytes(fileName);
+            var dataBytes = File.ReadAllBytes(Path.Combine(session, fileName));
             var dataStream = new MemoryStream(dataBytes);
             response.Content = new StreamContent(dataStream);
             response.Content.Headers.ContentDisposition = new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment");
@@ -27,16 +27,17 @@ namespace webApp
         }
 
         // GET api/<controller>
-        public IEnumerable<string> Get()
-        {
-            return new string[] { "value1", "value2" };
-        }
+        //public IEnumerable<string> Get()
+        //{
+        //    HttpRequestMessage request = this.Request;
+        //    return new string[] { "value1", "value2" };
+        //}
 
-        // GET api/<controller>/5
-        public string Get(int id)
-        {
-            return "value";
-        }
+        //// GET api/<controller>/5
+        //public string Get(int id)
+        //{
+        //    return "value";
+        //}
 
         // POST api/<controller>
         public void Post([FromBody] string value)

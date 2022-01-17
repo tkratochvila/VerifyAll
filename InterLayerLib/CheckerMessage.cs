@@ -12,7 +12,9 @@ namespace InterLayerLib
         error,
         newVerificationResult,
         CheckerVerificationNotification,
-        newTestCases
+        newTestCasesRequestFile,
+        newTestCases,
+        testCasesStatus
     }
 
     abstract public class CheckerMessage

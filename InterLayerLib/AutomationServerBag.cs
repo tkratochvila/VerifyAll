@@ -133,7 +133,7 @@ namespace InterLayerLib
         /// <summary>
         /// 
         /// </summary>
-        public void Clear()
+        public void EARS()
         {
             AutomationServer dummyItem;
             while (!cb.IsEmpty)

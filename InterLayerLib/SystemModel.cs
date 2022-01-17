@@ -384,39 +384,39 @@ namespace InterLayerLib
         }
 
         /// <summary>
-        /// Method parses inputs from requirements ".ears" file.
+        /// Method parses inputs from requirements ".EARS" file.
         /// These are introduced by the "//.inputs" string.
         /// </summary>
         /// <param name="inputs"></param>
-        void ParseInputsFromClear(string inputs)
+        void ParseInputsFromEARS(string inputs)
         {
             string functionInputs = inputs.Substring(inputs.IndexOf(' ') + 1);
-            List<string> clearInputs = functionInputs.Split(' ').ToList();
-            foreach(var item in clearInputs)
+            List<string> EARSInputs = functionInputs.Split(' ').ToList();
+            foreach(var item in EARSInputs)
             {
                 // Extract the input variable info - the name and the type.
                 string[] inputInfo = item.Split('(').ToArray();
                 interfaceVariables[(int)InterfaceTypes.Inputs].Add(inputInfo[0]);
-                string inputType = inputInfo[1].Substring(0, inputInfo[1].Length - 1);  // -1 to remove the char of ending bracket ')' defining the types in ears file
+                string inputType = inputInfo[1].Substring(0, inputInfo[1].Length - 1);  // -1 to remove the char of ending bracket ')' defining the types in EARS file
                 interfaceVariablesTypes[(int)InterfaceTypes.Inputs].Add(inputType);
             }
         }
 
         /// <summary>
-        /// Method parses outputs from the requirements ".ears" file.
+        /// Method parses outputs from the requirements ".EARS" file.
         /// These are introduced by the "//.outputs" string.
         /// </summary>
         /// <param name="outputs"></param>
-        void ParseOutputsFromClear(string outputs)
+        void ParseOutputsFromEARS(string outputs)
         {
             string functionOutputs = outputs.Substring(outputs.IndexOf(' ') + 1);
-            List<string> clearOutputs = functionOutputs.Split(' ').ToList();
-            foreach (var item in clearOutputs)
+            List<string> EARSOutputs = functionOutputs.Split(' ').ToList();
+            foreach (var item in EARSOutputs)
             {
                 // Extract the output variable info - the name and the type.
                 string[] outputInfo = item.Split('(').ToArray();
                 interfaceVariables[(int)InterfaceTypes.Outputs].Add(outputInfo[0]);
-                string outputType = outputInfo[1].Substring(0, outputInfo[1].Length - 1);  // -1 to remove the char of ending bracket ')' defining the types in ears file
+                string outputType = outputInfo[1].Substring(0, outputInfo[1].Length - 1);  // -1 to remove the char of ending bracket ')' defining the types in EARS file
                 interfaceVariablesTypes[(int)InterfaceTypes.Outputs].Add(outputType);
             }
         }
@@ -511,11 +511,11 @@ namespace InterLayerLib
 
                         if (line.StartsWith("//.inputs"))
                         {
-                            ParseInputsFromClear(line);
+                            ParseInputsFromEARS(line);
                         }
                         else if (line.StartsWith("//.outputs"))
                         {
-                            ParseOutputsFromClear(line);
+                            ParseOutputsFromEARS(line);
                         }
                         else
                         {
@@ -695,6 +695,7 @@ namespace InterLayerLib
             {
                 files["requirements"] = new InputFile(Path.Combine(Directory.GetCurrentDirectory(), "requirements.ltl"));
                 files["variablePartitioning"] = new InputFile(Path.Combine(Directory.GetCurrentDirectory(), "requirements.part"));
+                files["SMT"] = new InputFile(Path.Combine(LocalUserAppDataPath, "requirements.temp"));
             }
             return files;
         }
@@ -1190,7 +1191,7 @@ namespace InterLayerLib
 
             mergeAllSignals();
             
-            // Make sure that the resulting variable name is without white-spaces for LTL, 
+            // Make sure that the resulting variable name is without white-spaces for LTL and SMT, 
             // even when the variable is not within interface requirements.
             IOrderedEnumerable<StructVariable> orderedVariables;
             if (requirementIndex == -1)

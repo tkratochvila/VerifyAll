@@ -6,6 +6,7 @@ import { AppComponent } from './app.component';
 import { RequirementComponent } from './requirement/requirement.component';
 import { FormsModule } from '@angular/forms';
 import { ColorableTextAreaComponent } from './colorable-text-area/colorable-text-area.component';
+import { HttpClientModule } from '@angular/common/http';
 
 @NgModule({
   declarations: [
@@ -16,7 +17,8 @@ import { ColorableTextAreaComponent } from './colorable-text-area/colorable-text
   imports: [
     BrowserModule,
     AppRoutingModule,
-    FormsModule
+    FormsModule,
+    HttpClientModule
   ],
   providers: [],
   bootstrap: [AppComponent]

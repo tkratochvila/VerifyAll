@@ -23,7 +23,7 @@ namespace InterLayerLib
 
         public string build()
         {
-            string automationPlan = "http://honeywell.com/autoplans/" + Path.GetFileNameWithoutExtension(requirementDocument)
+            string automationPlan = "http://honeywell.com/AutomationPlans/" + Path.GetFileNameWithoutExtension(requirementDocument)
                 + Path.GetFileNameWithoutExtension(systempath) + string.Join("and", callParameters).Replace(",", "_");
             automationPlan = automationPlan.Replace(' ', '_');  // Lyo says spaces are not allowed in a URI
             string info =
@@ -94,7 +94,7 @@ namespace InterLayerLib
             }
 
             string seconds = Math.Round((DateTime.Now - new DateTime(2013, 1, 1)).TotalSeconds).ToString();
-            string automationPlan = "http://honeywell.com/autoplans/" + Path.GetFileNameWithoutExtension(requirementDocument)
+            string automationPlan = "http://honeywell.com/AutomationPlans/" + Path.GetFileNameWithoutExtension(requirementDocument)
                 + Path.GetFileNameWithoutExtension(systempath) + string.Join("and", callParameters).Replace(",", "_");
             automationPlan = automationPlan.Replace(' ', '_');  // Lyo says spaces are not allowed in a URI
             string info =
@@ -276,8 +276,8 @@ namespace InterLayerLib
                 xml +=
                 "	<oslc_auto:inputParameter>\n" +
                 "		<oslc_auto:ParameterInstance>\n" +
-                "			<oslc:name>" + inputParam.Key + "</oslc:name>\n" +
-                "			<rdf:value>" + inputParam.Value + "</rdf:value>\n" +
+               $"			<oslc:name>{ inputParam.Key }</oslc:name>\n" +
+               $"			<rdf:value>{ inputParam.Value }</rdf:value>\n" +
                 "		</oslc_auto:ParameterInstance>\n" +
                 "	</oslc_auto:inputParameter>\n" +
                 "	\n";

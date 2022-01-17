@@ -46,6 +46,9 @@ namespace InterLayerLib
 
         public int requirementIndex { get; set; } /// Current requirement index under formalization
 
+        public string SMTvariables { get; set; }
+        public string SMTdatatypes { get; set; }
+
         /// list of variables from non-interface requirements for each requirement     
         public List<List<StructVariable>> RequirementVariableList { get; set; }
 
@@ -67,6 +70,7 @@ namespace InterLayerLib
 
         public Dictionary<string, string> Rules; // all rules in GAL with rulenames as key
         public HashSet<string> CLIPSactivations; // all facts if the requirements are CLIPS rules
+        public HashSet<string> CLIPSmodifiedActivations; // facts that arenot initially input activations, but are added when an existing fact is modified
         public HashSet<string> CLIPSoutputActivations; // output facts
 
         /// <summary>
@@ -88,7 +92,7 @@ namespace InterLayerLib
 
         public void importRequirementsFromStream(StreamReader sr, string fileName)
         {
-            clear_requirements();
+            EARS_requirements();
             RequirementDocumentFilename = fileName;
             if (fileName.EndsWith(".zip"))
                 return;
@@ -99,7 +103,7 @@ namespace InterLayerLib
             while ((line = sr.ReadLine()) != null)
             {
                 // Start of a requirement
-                if (isEARS(line) || isCLIPS(line)) 
+                if (isHonEARS(line) || isCLIPS(line)) 
                 {
                     if (!firstRequirement)
                     {
@@ -158,7 +162,7 @@ namespace InterLayerLib
         }
 
         /// <summary>
-        /// Adds requirement text to internal requirement structure and clears the text.
+        /// Adds requirement text to internal requirement structure and EARSs the text.
         /// Converts the CLIPS to EARS if needed.
         /// </summary>
         /// <param name="requirementNumber">requirement index in the </param>
@@ -174,16 +178,17 @@ namespace InterLayerLib
             return requirementNumber;
         }
 
-        public void clear_requirements()
+        public void EARS_requirements()
         {
             for (int i = requirements.Count - 1; i >= 0; i--)
             {
                 requirements[i].ParentNode.RemoveChild(requirements[i]);
             }
             requirementIndex = 0;
-            Rules.Clear();
-            CLIPSoutputActivations.Clear();
-            CLIPSactivations.Clear();
+            //Rules.Clear();
+            //CLIPSoutputActivations.Clear();
+            //CLIPSactivations.Clear();
+            //CLIPSmodifiedActivations.Clear();
         }
 
         /// <summary>
@@ -288,6 +293,7 @@ namespace InterLayerLib
             unsatisfiedRequirements = new List<string>();
             Rules = new Dictionary<string, string>();
             CLIPSactivations = new HashSet<string>();
+            CLIPSmodifiedActivations = new HashSet<string>();
             CLIPSoutputActivations = new HashSet<string>();
         }
 
@@ -313,7 +319,7 @@ namespace InterLayerLib
                     id = id.Remove(id.IndexOf("::"));
 
                 }
-                else if (isEARS(requirement_text))
+                else if (isHonEARS(requirement_text))
                 {
                     id = getRequirementID(requirement_text);
                 }
@@ -420,12 +426,12 @@ namespace InterLayerLib
             return null;
         }
 
-        private const string EARS_ID_RegEX = @"^\s*ID\s*""([^""]+)""\s*:";
+        public const string EARS_ID_RegEX = @"^\s*ID\s*""([^""]+)""\s*:";
         /// <summary>
-        /// Determines whether given text seems to be compliant to EARS
+        /// Determines whether given text seems to be compliant to EARS Notaion (in past Honeywell Property Based Requirement Language) 
         /// </summary>
         /// <param name="requirement_text">Presumably a requirement text</param>
-        static public bool isEARS(string requirement_text)
+        static public bool isHonEARS(string requirement_text)
         {
             return ContainsALineWithRegex(requirement_text, EARS_ID_RegEX);
         }
@@ -452,17 +458,63 @@ namespace InterLayerLib
             return RequirementDocumentFilename.ToLower().Contains("gesture")
                 || Path.GetExtension(RequirementDocumentFilename).ToLower().Equals(".clp");
         }
+        /// <summary>
+        /// returns true iff the given requirement text seems to be Flight Control (B787 or C919) structured requirement
+        /// </summary>
+        /// <param name="text">Presumably requirement text</param>
+        static public bool isSRFC(string text)
+        {
+            text = text.TrimStart();
+            if (text.StartsWith("Anchor: ") || mwstart.IsMatch(text))
+                return true;
+            return false;        }
 
+        /// <summary>
+        /// returns true iff the given requirement text seems to be Display and Graphics structured requirement
+        /// </summary>
+        /// <param name="text">Presumably requirement text</param>
+        static public bool isSRDG(string text)
+        {
+            text = text.TrimStart();
+            if (new Regex(@"shall[\t ]+\[").IsMatch(text))
+                return true;
+            return false;
+        }
 
+        /// <summary>
+        /// Function returns true, when given requirement text is (Display and Graphics or Flight control)
+        /// structured requirement that specifies execution rate of the system.
+        /// Examples:
+        ///     Requirement:	The PF Maintenance Controller function shall be designed for an execution rate of 10Hz.
+        ///     The Trim Actuator Position Processing functional shall be executed at 80Hz rate.
+        /// </summary>
+        static public bool isExecutionRateStructuredRequirement(string text)
+        {
+            return (text != "" && (text.IndexOf("Hz") > 30 || text.IndexOf("hertz") > 30) &&
+                (text.Contains("shall be designed for an execution rate of ") ||
+                 text.Contains("shall be scheduled to execute at ") ||
+                 text.Contains("shall be executed at ")));
+        }
         /// <summary>
         /// Updates internal requirement structure systemModel.reqs based on textual structured requirement
         /// </summary>
         /// <param name="text">requrement text</param>
         public void updatereqsForSR(string text)
         {
-            if ((isEARS(text)) && !getReqIFAttribute("Requirement Pattern").Contains("Manual"))
+            // TODO create isSRDG from :
+            if ((isSRDG(text) || isSRFC(text) || isHonEARS(text)) && !getReqIFAttribute("Requirement Pattern").Contains("Manual"))
             {
-                setReqIFAttribute("IDENTIFIER", getRequirementID(text));
+                if (isSRFC(text))
+                {
+                    if (text.Contains("Anchor:") && text.Contains("Source:") && text.IndexOf("Anchor:") < text.IndexOf("Source:"))
+                        setReqIFAttribute("IDENTIFIER", text.Substring(text.IndexOf("Anchor:") + 7, text.IndexOf("Source:") - text.IndexOf("Anchor:") - 7).Trim());
+                    if (mwstart.IsMatch(text))
+                        setReqIFAttribute("IDENTIFIER", text.Substring(text.IndexOf("[") + 1, text.IndexOf("::") - text.IndexOf("[") - 1).Trim());
+                }
+                else if (isHonEARS(text))
+                {
+                    setReqIFAttribute("IDENTIFIER", getRequirementID(text));
+                }
             }
         }
 
@@ -575,33 +627,12 @@ namespace InterLayerLib
         public string CLIPS2EARS(string text)
         {
             var ANTLRinput = new AntlrInputStream(text.TrimEnd(new char[] { '\t', '\n', '\r', ' ', '.' }));
-            Lexer lexer = new CLIPSLexer(ANTLRinput);
-            CommonTokenStream tokens = new CommonTokenStream(lexer);
-            Parser parser = new CLIPSParser(tokens);
-            IParseTree tree = ((CLIPSParser)parser).file();
-            return (new CLIPSVisitor()).Visit(tree);
-        }
-
-        /// <summary>
-        /// Converts CLIPS rule to Petri net transition system in GAL format.
-        /// </summary>
-        /// <param name="text">CLIPS rule</param>
-        /// <returns>Rulename and a rule in GAL</returns>
-        public KeyValuePair<string, string> CLIPS2Petri(string text, int index)
-        {
-            var ANTLRinput = new AntlrInputStream(text.TrimEnd(new char[] { '\t', '\n', '\r', ' ', '.' }));
-            Lexer lexer = new CLIPSLexer(ANTLRinput);
-            CommonTokenStream tokens = new CommonTokenStream(lexer);
-            Parser parser = new CLIPSParser(tokens);
-            IParseTree tree = ((CLIPSParser)parser).file();
-            PETRIVisitor visitor = new PETRIVisitor(index);
-            string GAL = visitor.Visit(tree);
-
-            // Store facts and rules from this rule to complete hashset from all rules:
-            CLIPSactivations.UnionWith(visitor.facts);
-            CLIPSoutputActivations.UnionWith(visitor.outputFacts);
-            Debug.Assert(visitor.ruleName != "Error: unknown rule name");
-            return new KeyValuePair<string, string> (visitor.ruleName, GAL);
+            //Lexer lexer = new CLIPSLexer(ANTLRinput);
+            //CommonTokenStream tokens = new CommonTokenStream(lexer);
+            //Parser parser = new CLIPSParser(tokens);
+            //IParseTree tree = ((CLIPSParser)parser).file();
+            //return (new CLIPSVisitor(ref functions)).Visit(tree);
+            return null;
         }
 
         /// <summary>
@@ -731,6 +762,28 @@ namespace InterLayerLib
                 }
             }
             return "Unsupported";
+        }
+
+        /// <summary>
+        /// Create dictionary of all conditions from all requirements in first time unit
+        /// </summary>
+        /// <param name="SMTreqs">SMT requirements</param>
+        /// <param name="requirementID">requirement ID</param>
+        /// <returns>dictionary of all conditions from all requirements in first time unit</returns>
+        public static Dictionary<string, Tuple<int, string>> getConditionsFromSMTRequirements(string SMTreqs, string requirementID)
+        {
+            string balancedParentheses = @"\((((?<BR>\()|(?<-BR>\))|[^()]*)+)\)";
+            var r1 = new Regex(@"(" + requirementID + @"-[0-9]+) \(\) Bool \(=> (" + balancedParentheses + @"|[A-Za-z_][A-Za-z_0-9]+)");
+            Dictionary<string, Tuple<int, string>> conditionsOfRequirements = new Dictionary<string, Tuple<int, string>>();
+            foreach (string SMTreq in SMTreqs.Split(new string[] { "(define-fun " }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                foreach (Match match in r1.Matches(SMTreq))
+                    if (!match.Groups[1].Value.StartsWith("x")) // Only conditions from requirements from fisrt time unit.
+                        if (!conditionsOfRequirements.ContainsKey(match.Groups[2].Value))
+                            conditionsOfRequirements[match.Groups[2].Value] = new Tuple<int, string>(conditionsOfRequirements.Count, match.Groups[1].Value);
+                Debug.Assert(r1.Matches(SMTreq).Count == 1 || r1.Matches(SMTreq).Count == 0);
+            }
+            return conditionsOfRequirements;
         }
 
         /// <summary>

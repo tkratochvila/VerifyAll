@@ -15,11 +15,7 @@ namespace webApp
 	public class Global : HttpApplication
 	{
 		void Application_Start(object sender, EventArgs e)
-		{
-			// Code that runs on application startup
-			RouteConfig.RegisterRoutes(RouteTable.Routes);
-			BundleConfig.RegisterBundles(BundleTable.Bundles);
-			webApp.App_Start.WebAPIConfig.register(GlobalConfiguration.Configuration);
+		{	
 			var appDataDirectory = ConfigurationManager.AppSettings["workingDirectory"]; ;
 			
 			if(!System.IO.Directory.Exists(appDataDirectory))
@@ -28,12 +24,18 @@ namespace webApp
             }
 
 			System.IO.Directory.SetCurrentDirectory(appDataDirectory);
+			WebVerifyServiceManager.init();
+
+			// Code that runs on application startup
+			RouteConfig.RegisterRoutes(RouteTable.Routes);
+			BundleConfig.RegisterBundles(BundleTable.Bundles);
+			webApp.App_Start.WebAPIConfig.register(GlobalConfiguration.Configuration);
 		}
 
 		void Session_Start(object sender, EventArgs e)
 		{
-			Checker checker = new Checker();
-			Session["checker"] = checker;
+			//Checker checker = new Checker();
+			//Session["checker"] = checker;
 		}
 
 

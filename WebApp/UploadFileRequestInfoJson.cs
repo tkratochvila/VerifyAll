@@ -7,7 +7,7 @@ namespace webApp
 {
     public class UploadFileRequestInfoJson
     {
-        public string sessionKey { get; set; }
+        public string session { get; set; }
         public List<string> fileNames { get; set; }
     }
 }

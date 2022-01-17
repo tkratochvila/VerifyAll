@@ -2,7 +2,7 @@
 
 <asp:Content ID="BodyContent" ContentPlaceHolderID="MainContent" runat="server">
     <h2><%: Title %>.</h2>
-    <h3>Developed by Honeywell International s.r.o.</h3>
+    <h3>Your contact page.</h3>
     <address>
         Turanka 100<br />
         627 00 Brno<br />
@@ -10,6 +10,6 @@
     </address>
 
     <address>
-        <strong>Support:</strong>   <a href="mailto:Tomas.Kratochvila@Honeywell.com">Tomas.Kratochvila@Honeywell.com</a><br />
+        <strong>Support:</strong>   <a href="mailto:Tomas.Kratochvila@Honeywell.com">Tomas.Kratochvila@Honeywell.com</a>
     </address>
 </asp:Content>

@@ -10,6 +10,7 @@ using System.Data;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using System.Text;
+using Newtonsoft.Json;
 using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
 
@@ -26,6 +27,8 @@ namespace InterLayerLib
         private event CheckerEvent _events;
 
         private CancellationTokenSource testCasesCancellationSource;
+
+        private string _directory = "";
 
         /// <summary>
         /// Generic template for each atomic proposition evaluation function
@@ -68,16 +71,26 @@ namespace InterLayerLib
 
         public AutomationServerBag automationServerBag = new AutomationServerBag();
 
+        public List<DataSet> jsonData; // DataSet from each .json files to be used for verification of CLIPS files
+
         public Ltl ltl = new Ltl();
 
         public Verifier verifier = new Verifier();
         public VerificationTable verificationTable = new VerificationTable();
+
+        public List<string> systemArchiveEntries = null;
+        public string systemArchiveFile = null;
 
         /// Check if summary was already created, if yes it is possible to just update the content with the new data
         public bool summCreated { get; set; }
         // Size of the partial result header size for verification table
         private const int CORRECTNESS_CHECKING_PARTIAL_RESULT_HEADER_SIZE = 1; // Size of a table partial result header for CorrectnessChecking
         private const int REQUIREMENT_ANALYSIS_PARTIAL_RESULT_HEADER_SIZE = 4; // Size of a table partial result header for RequirementAnalysis
+
+        public Checker(string directory = "")
+        {
+            this._directory = directory;
+        }
 
         public void subscribeEvents(CheckerEvent ev)
         {
@@ -202,8 +215,9 @@ namespace InterLayerLib
 
         public void importRequirementsFromText(StreamReader sr, string fileName)
         {
-            systemModel.reqs.importRequirementsFromStream(sr, fileName);
-            systemModel.importSystemFromStream(sr, fileName);
+            string fullFileName = Path.Combine(_directory, fileName);
+            systemModel.reqs.importRequirementsFromStream(sr, fullFileName);
+            systemModel.importSystemFromStream(sr, fullFileName);
         }
 
         public void importRequirementsFromText(string text, string fileName)
@@ -211,15 +225,26 @@ namespace InterLayerLib
             importRequirementsFromText(new StreamReader(new MemoryStream(Encoding.ASCII.GetBytes(text))), fileName);
         }
 
-        public void importRequirementsFromFile(string fileName)
+        public void importSystemArchiveFile(string fileName)
         {
-            if (fileName != null && Regex.IsMatch(fileName.ToLower(), @"\.(ears|clp|zip)$"))
+            if (fileName != null && Regex.IsMatch(fileName.ToLower(), @"\.(zip)$"))
             {
-                if (File.Exists(fileName))
+                string fullFileName = fileName.StartsWith(_directory) ? fileName : Path.Combine(_directory, fileName);
+                string filePathInsideID = InterLayerLibPath.GetRelativePath(_directory, fullFileName);
+                if (File.Exists(fullFileName))
                 {
-                    using (StreamReader sr = new StreamReader(fileName, Encoding.Default))
+                    try
                     {
-                        importRequirementsFromText(sr, fileName);
+                        systemArchiveEntries = TestGeneration.importZipArchive(fullFileName);
+                        systemArchiveFile = fullFileName;
+                        _events(new CheckerNewTestCasesRequestFile(new InfoFile(filePathInsideID, "")));
+                    }
+                    catch(Exception e)
+                    {
+                        systemArchiveEntries = null;
+                        systemArchiveFile = null;
+                        _events(new CheckerWarningMessage(e.Message, "System archive error"));
+
                     }
                 }
                 else
@@ -229,14 +254,73 @@ namespace InterLayerLib
             }
             else
             {
-                throw new Exception("Only .ears, .clp and .zip extensions are supported.");
+                throw new Exception("Only .zip extensions are supported.");
+            }
+        }
+
+        public void importRequirementsFromFile(string fileName)
+        {
+            if (fileName != null && Regex.IsMatch(fileName.ToLower(), @"\.(EARS|clp)$"))
+            {
+                string fullFileName = Path.Combine(_directory, fileName);
+
+                if (File.Exists(fullFileName))
+                {
+                    using (StreamReader sr = new StreamReader(fullFileName, Encoding.Default))
+                    {
+                        importRequirementsFromText(sr, fileName);
+                    }
+                }
+                else
+                {
+                    throw new Exception($"Path: { fullFileName } - file path is missing, not valid or file not exist!");
+                }
+            }
+            else
+            {
+                throw new Exception("Only .EARS and .clp extensions are supported.");
             }
         }
 
         public void importRequirementsFromFile(string fileName, List<string> additionalFiles)
         {
-            this.importRequirementsFromFile(fileName);
-            // TO-DO: do something with additionalFiles
+            string fullFileName = Path.Combine(_directory, fileName);
+            this.importRequirementsFromFile(fullFileName);
+            jsonData = new List<DataSet>();
+            additionalFiles.Where(f => f.EndsWith(".json")).ToList().ForEach(f => LoadJsonData(f));
+            // TODO: do something with additionalFiles different than json
+        }
+
+        private void LoadJsonData(string fileName)
+        {
+            if (File.Exists(fileName))
+            {
+                string jsonFileContent = File.ReadAllText(fileName);
+                jsonData.Add(JsonConvert.DeserializeObject<DataSet>(jsonFileContent));
+
+                // The following nested loop creates asserts from loaded data from all json files
+                StringBuilder sb = new StringBuilder();
+                foreach (var fileData in jsonData)
+                {
+                    foreach (DataTable table in fileData.Tables)
+                    {
+                        if (null != table && null != table.Rows)
+                        {
+                            // TODO make sure that airport is used instead of airports
+                            foreach (DataRow dataRow in table.Rows)
+                            {
+                                sb.Append($"(assert { table.TableName }");
+                                for (int i = 0; i < dataRow.ItemArray.Count(); i++)
+                                {
+                                    // TODO Solve strings and multi-slots preferable by using deftemplate data types.
+                                    sb.Append($" ({ table.Columns[i].ColumnName } { dataRow.ItemArray[i] })");
+                                }
+                                sb.AppendLine(" )");
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         public void LoadVerificationToolCfg(string verificationToolsFile)
@@ -260,6 +344,14 @@ namespace InterLayerLib
             if (files.Any(f => f.Key.StartsWith("Missing-source-code")))
             {
                 AlreadyShown = false;
+                /*foreach (Form frm in Application.OpenForms)
+                {
+                    if (frm.Name == "ShowInfo" && frm.Text == "Missing include files")
+                    {
+                        AlreadyShown = true;
+                        break;
+                    }
+                }*/
             }
             else
                 AlreadyShown = true;
@@ -435,6 +527,20 @@ namespace InterLayerLib
 
                 formalizationProgress = systemModel.reqs.getReqIFAttribute("Formalization Progress", req);
                 string description = ToolKit.XMLDecode(req.GetAttribute("DESC"));
+                // Leave only requirement description without meta data.
+                if (Requirements.isSRFC(description))
+                {
+                    if (description.Contains("Requirement:"))
+                        description = description.Substring(description.IndexOf("Requirement:") + 12);
+                    if (description.Contains("Note:"))
+                        description = description.Remove(description.IndexOf("Note:"));
+                    if (description.Contains("Rationale:"))
+                        description = description.Remove(description.IndexOf("Rationale:"));
+                    if (description.StartsWith("[") && description.Contains("]"))
+                        description = description.Substring(description.IndexOf("]") + 1);
+                    if (description.Contains("[end]"))
+                        description = description.Remove(description.IndexOf("[end]"));
+                }
 
                 int offset = (systemModel.exists()) ? CORRECTNESS_CHECKING_PARTIAL_RESULT_HEADER_SIZE : REQUIREMENT_ANALYSIS_PARTIAL_RESULT_HEADER_SIZE;
                 DataRow row;
@@ -446,9 +552,11 @@ namespace InterLayerLib
                 {
                     row = verificationTable.VRtable.Rows[requirementIndex + offset];   // First row is reserved for process state
                 }
+                if (row["ID"] == null)
+                    return;
                 row["ID"] = ToolKit.XMLDecode(req.GetAttribute("IDENTIFIER"));
                 row["Progress"] = formalizationProgress;
-                row["Text"] = description;
+                row["Text"] = Regex.Replace(description,@"\s*;.*",""); // Remove CLIPS comments 
 
                 DataRow rowD;
                 if (!summCreated)
@@ -544,9 +652,8 @@ namespace InterLayerLib
             {
                 /* TODO UNDO
                 _events(new CheckerErrorMessage("No verification server available", "No verification server available:" + automationServerBag.PrintAvailability(systemModel),
-                                "Verification Servers - Error"));
+                                "Verification Servers - Error"));*/
                 ToolKit.Trace(ex.Message);
-                Application.UseWaitCursor = false;*/
                 ToolKit.Trace("[EXIT] - No verification server available:" + automationServerBag.PrintAvailability(systemModel));
                 return false;
             }
@@ -694,8 +801,23 @@ namespace InterLayerLib
         }
 
         /// <summary>
-        /// If the requirement is a structured requirement (EARS) 
-        /// parse the requirement using corresponding ANTLR4 grammar and get formalized Full LTL representation
+        /// Function returns true, when given requirement text is (Display and Graphics or Flight control)
+        /// structured requirement that specifies execution rate of the system.
+        /// Examples:
+        ///     Requirement:	The PF Maintenance Controller function shall be designed for an execution rate of 10Hz.
+        ///     The Trim Actuator Position Processing functional shall be executed at 80Hz rate.
+        /// </summary>
+        public bool isExecutionRateStructuredRequirement(string text)
+        {
+            return (text != "" && (text.IndexOf("Hz") > 30 || text.IndexOf("hertz") > 30) &&
+                (text.Contains("shall be designed for an execution rate of ") ||
+                 text.Contains("shall be scheduled to execute at ") ||
+                 text.Contains("shall be executed at ")));
+        }
+
+        /// <summary>
+        /// If the requirement is a structured requirement (EARS Notation, Flight control or Display and Graphics) 
+        /// parse the requirement using corresponding ANTLR4 grammar and get formalized Full LTL and SMT representation
         /// </summary>
         /// <param name="text">Requirement text</param>
         /// <param name="LTLtext">current LTL text</param>
@@ -703,94 +825,150 @@ namespace InterLayerLib
         public string formalizeStructuredRequirement(string text)
         {
             string LTLtext = "";
+            string SMTtext = "";
             foreach (SubsitutionsOfRequirements s in sb.Where(s => s.enabled).OrderBy(s => s.ID))
                 text = Regex.Replace(text, s.original, s.replacement, RegexOptions.IgnoreCase);
             //string LTLtext = textBoxLTL.Text; // When the text is not structured requirement return the unchanged text.
-            if (Requirements.isEARS(text) && !systemModel.reqs.getReqIFAttribute("Requirement Pattern").Contains("Manual"))
+            // If the requirement is a structured requirement (Display and Graphics or Flight control) parse the requirement using corresponding ANTLR4 grammar:
+            if (((Requirements.isSRDG(text)) || Requirements.isSRFC(text) || Requirements.isHonEARS(text)) && !systemModel.reqs.getReqIFAttribute("Requirement Pattern").Contains("Manual"))
             {
-                var ANTLRinput = new AntlrInputStream(text.TrimEnd(new char[] { '\t', '\n', '\r', ' ', '.' }));
-                Lexer lexer;
-                Parser parser;
-
-                if (Requirements.isEARS(text)) //EARS structured requirement
+                if (isExecutionRateStructuredRequirement(text))
                 {
-                    if (text.Trim().EndsWith("Requirement:"))
-                        return "";
-
-                    lexer = new EARSLexer(ANTLRinput);
-                    CommonTokenStream tokens = new CommonTokenStream(lexer);
-                    if (tokens.GetNumberOfOnChannelTokens() > 0)
+                    double frequency = -1.0;
+                    if (text.IndexOf("Hz") > 30)
+                        Double.TryParse((Regex.Replace(text.Substring(text.IndexOf("Hz") - 6, 6), @"[^\d\.]", "")), out frequency);
+                    else
+                        Double.TryParse((Regex.Replace(text.Substring(text.IndexOf("hertz") - 6, 6), @"[^\d\.]", "")), out frequency);
+                    if (frequency > 0.0)
                     {
-                        string tokensStr = tokens.GetTokens().Select(ii => ii.Text).Aggregate((jj, kk) => jj + "," + kk);
+                        RequirementSampleTime = 1 / frequency;
                     }
+                    else
+                        LTLtext = $"Error: Unable to parse correct positive frequency: { frequency }";
+                }
+                else
+                {
+                    var ANTLRinput = new AntlrInputStream(text.TrimEnd(new char[] { '\t', '\n', '\r', ' ', '.' }));
 
-                    parser = new EARSParser(tokens);
+                    Lexer lexer = null;
+                    //Parser parser = null;
 
+                    if (Requirements.isSRFC(text) || Requirements.isHonEARS(text)) //SRFC or HonEARS structured requirement
+                    {
+                        if (text.Trim().EndsWith("Requirement:"))
+                            return "";
+                        //lexer = new HonEARSLexer(ANTLRinput);
+                        CommonTokenStream tokens = new CommonTokenStream(lexer);
+                        if (tokens.GetNumberOfOnChannelTokens() > 0)
+                        {
+                            string tokensStr = tokens.GetTokens().Select(ii => ii.Text).Aggregate((jj, kk) => jj + "," + kk);
+                        }
+                        //parser = new HonEARSParser(tokens);
+
+                        //add error handling
+//                        parser.BuildParseTree = true;
+                        //listener.SetColorizeReference(colorizeAvalonEdit);    // FROMFORM : set the callback for colorizing avalon
+
+                        //IParseTree tree = null;
+
+                        //HonEARSVisitor HonEARSvisitorLTL = null;
+  
+                        //tree = ((HonEARSParser)parser).taggedRequirement();
+                        //string next = ""; // Implicit assumtion would be that the response in a requirment is immediate
+                        //HonEARSvisitorLTL = new HonEARSVisitor(0, next, Math.Max(RequirementSampleTime, systemModel.SimulinkSampleTime));
                         
-                    parser.BuildParseTree = true;
+                        try
+                        {
+                            LTLtext = "";// (Requirements.isSRFC(text)) ? visitorLTL.Visit(tree) : HonEARSvisitorLTL.Visit(tree);
+                            systemModel.reqs.traceabilityToRequirementTextList[systemModel.reqs.requirementIndex] = null; //HonEARSvisitorLTL.traceabilityToRequirementText;
+                            // TODO report redundant parts of a requirement, both textually and in LTL form.
 
-                    IParseTree tree = null;
+                            if (systemModel.reqs.RequirementVariableList.Count > systemModel.reqs.requirementIndex)
+                                // Convert the HashSet variables to list so that it could be later used in foreach cycle where some variables are changed within the cycle.
+                                systemModel.reqs.RequirementVariableList[systemModel.reqs.requirementIndex] = null;//HonEARSvisitorLTL.variables.ToList();
+                            else
+                            {
+                                Debug.Fail("Unexpected Error:\nchecker.systemModel.reqs.RequirementVariableList.Count = " + systemModel.reqs.RequirementVariableList.Count +
+                                    "\nchecker.systemModel.reqs.requirementIndex = " + systemModel.reqs.requirementIndex);
+                            }
+                            if (LTLtext == null)
+                                LTLtext = "Error: Exception: LTL is null";
+                            else if (LTLtext.Contains("Exception: "))
+                                LTLtext = $"Error: { LTLtext }";
+                        }
+                        catch (IOException ex)
+                        {
+                            LTLtext = $"Error: { ex.Message }";
+                        }
+                    }
+  
+                    // First Order Logic, add global for all i
+                    if (LTLtext.Contains("[i]") && !LTLtext.Contains("For all i"))
+                        LTLtext = "For all i" + Environment.NewLine + LTLtext;
 
-                    EARSVisitor EARSvisitorLTL = null;
-
-                    if (Requirements.isEARS(text))
+                    if (Requirements.isSRFC(text) || Requirements.isHonEARS(text)) //SRFC or HonEARS structured requirement
                     {
-                        tree = ((EARSParser)parser).taggedRequirement();
-                        string next = ""; // Implicit assumtion would be that the response in a requirment is immediate
-                        if (systemModel.reqs.RequirementDocumentFilename.EndsWith(".clp")) // the CLIPS rules assume that the response happens in the next time step
-                            next = "X";
-                        EARSvisitorLTL = new EARSVisitor(0, next, Math.Max(RequirementSampleTime, systemModel.SimulinkSampleTime));
+                        LTLtext = systemModel.replaceWithSignalNames(LTLtext, systemModel.reqs.requirementIndex);
+                        SMTtext = systemModel.replaceWithSignalNames(SMTtext, systemModel.reqs.requirementIndex);
+                    }
+                    // TODO add missing checker.systemModel.reqs.RequirementVariableList[checker.systemModel.reqs.requirementIndex] to checker.systemModel.interfaceRequirement
+                    SMTtext = ltl.substitueBoundedOperators(SMTtext, false, systemModel.allsignals, systemModel.interfaceRequirement[(int)SystemModel.InterfaceTypes.Inputs].SignalNameIndex, systemModel);
+
+                    // Remove all EARSly redundant parentheses:
+                    LTLtext = ltl.removeRedundantParentheses(LTLtext);
+                    //Debug.Assert( checker.ltl.removeRedundantParentheses("( (a->(b)) )->c") == "(a->(b)) ->c");
+                    SMTtext = ltl.removeRedundantParentheses(SMTtext);
+
+                    // Make sure that redundant parentheses around input variable are removed (a must for SMT).
+                    if (systemModel.interfaceRequirement[(int)SystemModel.InterfaceTypes.Inputs].SignalNameIndex >= 0)
+                    {
+                        foreach (var var in systemModel.allsignals.Select(sig => sig[systemModel.interfaceRequirement[(int)SystemModel.InterfaceTypes.Inputs].SignalNameIndex]))
+                        {
+                            string sn = SystemModel.safeName(var);
+                            SMTtext = Regex.Replace(SMTtext, @"\(\s*(x*)" + sn + @"\s*\)", "$1" + sn);
+                        }
                     }
 
-                    try
-                    {
-                        LTLtext = EARSvisitorLTL.Visit(tree);
-                        if (Requirements.isEARS(text))
+                    if (systemModel.reqs.RequirementVariableList.Count > 0)
+                        foreach (var structvar in systemModel.reqs.RequirementVariableList[systemModel.reqs.requirementIndex].OrderBy(x => -x.name.Length))
                         {
-                            systemModel.reqs.traceabilityToRequirementTextList[systemModel.reqs.requirementIndex] = EARSvisitorLTL.traceabilityToRequirementText;
+                            // Make sure that redundant parentheses around a variable are removed (a must for SMT).
+                            string sn = SystemModel.safeName(structvar.name);
+                            SMTtext = Regex.Replace(SMTtext, @"\(\s*(x*)" + sn + @"\s*\)", "$1" + sn);
                         }
 
-                        // TODO report redundant parts of a requirement, both textually and in LTL form.
+                    ltl.update_LTL_Structure(systemModel.propositionFromTable(LTLtext), systemModel.reqs.requirementIndex);
 
-                        if (systemModel.reqs.RequirementVariableList.Count > systemModel.reqs.requirementIndex)
-                            // Convert the HashSet variables to list so that it could be later used in foreach cycle where some variables are changed within the cycle.
-                            systemModel.reqs.RequirementVariableList[systemModel.reqs.requirementIndex] = EARSvisitorLTL.variables.ToList();
-                        else
-                        {
-                            Debug.Fail("Unexpected Error:\nchecker.systemModel.reqs.RequirementVariableList.Count = " + systemModel.reqs.RequirementVariableList.Count +
-                                "\nchecker.systemModel.reqs.requirementIndex = " + systemModel.reqs.requirementIndex);
-                        }
-                            
-                        if (LTLtext == null)
-                            LTLtext = "Error: Exception: LTL is null";
-                        else if (LTLtext.Contains("Exception: "))
-                            LTLtext = $"Error: { LTLtext }";
-                    }
-                    catch (IOException ex)
+                    // Update the inner structure
+                    systemModel.reqs.updatereqsForSR(text.TrimStart(new char[] { '\t', ' ', '\n', '\r' }).TrimEnd(new char[] { '\t', '\n', '\r' }));
+                    int i = 0;
+                    SMTtext = new Regex(@"\(define-fun SMT ").Replace(SMTtext, match =>
+                    { return $"(define-fun { systemModel.reqs.getReqIFAttribute("IDENTIFIER") }-{ (i++)} "; });
+                    // When requirements are prioritized, for example for knowledge-based system, 
+                    // add negation of logical disjunction of all previous conditions to conditions of current requirement
+                    string currentCondition;
+                    if (systemModel.reqs.isPrioritized())
                     {
-                        LTLtext = $"Error: { ex.Message }";
+                        Dictionary<string, Tuple<int, string>> conditionsOfCurrentRequirement = getConditionsFromSMTRequirements(SMTtext, systemModel.reqs.getReqIFAttribute("IDENTIFIER"));
+                        string commulativeConditions = "";
+                        if (systemModel.reqs.requirementIndex > 0)
+                            commulativeConditions = systemModel.reqs.getReqIFAttribute("Commulative Conditions", (XmlElement)systemModel.reqs.requirements[systemModel.reqs.requirementIndex - 1]);
+                        Debug.Assert(conditionsOfCurrentRequirement.Count < 2, "At most one formula per knowledge-based requirement is expected.");
+                        if (conditionsOfCurrentRequirement.Count == 1)
+                        {
+                            currentCondition = conditionsOfCurrentRequirement.First().Key;
+                            if (commulativeConditions != "")
+                                SMTtext = SMTtext.Replace(currentCondition, $"(and { currentCondition } " +
+                                    Regex.Replace(commulativeConditions.Replace(";(! (not ", " (not "), @"\) :named [^\)]+\)", ")") + ')');
+                            commulativeConditions += $";(! (not { currentCondition }) :named " +
+                                systemModel.reqs.getReqIFAttribute("IDENTIFIER", ((XmlElement)systemModel.reqs.requirements[systemModel.reqs.requirementIndex])) + ")";
+                            systemModel.reqs.setReqIFAttribute("Commulative Conditions", commulativeConditions);
+                            systemModel.reqs.setReqIFAttribute("Standalone Condition", currentCondition);
+                        }
                     }
                 }
-
-                // First Order Logic, add global for all i
-                if (LTLtext.Contains("[i]") && !LTLtext.Contains("For all i"))
-                    LTLtext = "For all i" + Environment.NewLine + LTLtext;
-
-                if (Requirements.isEARS(text)) //EARS structured requirement
-                {
-                    LTLtext = systemModel.replaceWithSignalNames(LTLtext, systemModel.reqs.requirementIndex);
-                }
-                // TODO add missing checker.systemModel.reqs.RequirementVariableList[checker.systemModel.reqs.requirementIndex] to checker.systemModel.interfaceRequirement
-
-                // Remove all clearly redundant parentheses:
-                LTLtext = ltl.removeRedundantParentheses(LTLtext);
-                //Debug.Assert( checker.ltl.removeRedundantParentheses("( (a->(b)) )->c") == "(a->(b)) ->c");
-
-                ltl.update_LTL_Structure(systemModel.propositionFromTable(LTLtext), systemModel.reqs.requirementIndex);
-
-                // Update the inner structure
-                systemModel.reqs.updatereqsForSR(text.TrimStart(new char[] { '\t', ' ', '\n', '\r' }).TrimEnd(new char[] { '\t', '\n', '\r' }));
             }
+            systemModel.reqs.setReqIFAttribute("SMT requirements", SMTtext);
             systemModel.reqs.setReqIFAttribute("LTL Formula Full", LTLtext);
             systemModel.reqs.setReqIFAttribute("Formalization Progress", determine_formalization_progress(LTLtext, "Structured Requirement"));
 
@@ -864,7 +1042,7 @@ namespace InterLayerLib
             string allAtomicPropositionsCode = ""; // Just the atomic proposition of each LTL property from all requirements
             systemModel.VariableList = new HashSet<string>[systemModel.reqs.requirements.Count];
             HashSet<string> allAPs = new HashSet<string>();
-            ltl.NormalizedPropositions.Clear();
+            //ltl.NormalizedPropositions.Clear();
 
             string proposition = "", ap;
 
@@ -875,6 +1053,7 @@ namespace InterLayerLib
 
                 // Only formal requirements but not deadlock requirement
                 if (systemModel.reqs.getReqIFAttribute("Formalization Progress", ((XmlElement)systemModel.reqs.requirements[requirementIndex])) == "Formal" && ltl.Structure.Keys.Contains(requirementIndex))
+
                     foreach (string APstring in ltl.APstrings.OrderByDescending(x => x.Length))
                         if (ltl.propositions[requirementIndex].TryGetValue(APstring, out proposition))
                         {
@@ -1028,13 +1207,13 @@ namespace InterLayerLib
         /// <param name="MTL">first-order metric temporal logic</param>
         /// <param name="requirementIndex">requirement index corresponding to this MTL formula</param>
         /// <returns>pure LTL formula formula in DIVINE and NuSMV format</returns>
-        public Tuple<string, string> getLTLFromMTL(string MTL, int requirementIndex)
+        public Tuple<string, string> MTL2LTL(string MTL, int requirementIndex)
         {
             string LTLformula;
             if (MTL == "" || !ltl.Structure.ContainsKey(requirementIndex) || (LTLformula = ltl.Structure[requirementIndex]).Trim() == "")
                 return new Tuple<string, string>("", "");
 
-            LTLformula = ltl.substitueBoundedOperators(LTLformula, null, -1, null);
+            LTLformula = ltl.substitueBoundedOperators(LTLformula, true, null, -1, null);
 
             // Put formula number to Atomic Propositions so that we can distinguish which formula belongs which AP.
             foreach (string APstring in ltl.APstrings.OrderByDescending(x => x.Length))
@@ -1175,7 +1354,8 @@ namespace InterLayerLib
         private int save_ltl_structure()
         {
             string allLTLproperties = ""; // LTL properties from all requirements to be saved for DIVINE .ltl file
-            string formula = ""; // To be saved for DIVINE .ltl file
+            string formula; // To be saved for DIVINE .ltl file
+            string allMTLs = "";
             allSMVLTLSPEC.RemoveRange(0, allSMVLTLSPEC.Count);
 
             for (int requirementIndex = 0; requirementIndex < systemModel.reqs.requirements.Count; requirementIndex++)
@@ -1191,7 +1371,9 @@ namespace InterLayerLib
                         continue;
                     }
                     formula = systemModel.reqs.getReqIFAttribute("LTL Formula Full", ((XmlElement)systemModel.reqs.requirements[requirementIndex]));
-                    var LTL = getLTLFromMTL(formula, requirementIndex);
+                    allMTLs += $"{ formula }{ Environment.NewLine }";
+
+                    var LTL = MTL2LTL(formula, requirementIndex);
                     // For each LTL, which is separated with double new line character, add prefix "LTLSPEC " or "#property ".
                     foreach (var ltl in LTL.Item2.Split(new string[] { "\n\n" }, StringSplitOptions.RemoveEmptyEntries))
                         allSMVLTLSPEC.Add(new Tuple<string, string>(systemModel.reqs.getReqIFAttribute("IDENTIFIER", ((XmlElement)systemModel.reqs.requirements[requirementIndex])),
@@ -1250,6 +1432,7 @@ namespace InterLayerLib
             { // Save the LTL file in UNIX format (no CRLF at the end of lines) so the looney has no issue processing the file
                 systemModel.ltlFileContent = allLTLproperties.Replace("#property ", "").Replace("\r\n", "\n").Replace("\n\n", "\n");
                 File.WriteAllText("requirements.ltl", systemModel.ltlFileContent);
+                File.WriteAllText("requirements.mtl", allMTLs);
                 systemModel.variablePartitioning = systemModel.prune_variables(systemModel.inputVariables, systemModel.outputVariables, systemModel.list_used_variables());
                 File.WriteAllText("requirements.part", systemModel.variablePartitioning);
             }
@@ -1291,7 +1474,7 @@ namespace InterLayerLib
         /// and definition for the used variables and final asserts.
         /// </summary>
         /// <param name="index">Specifies the position where starts the assert part in the code.</param>
-        /// <param name="sourceCode">Code which is extracted from .c file attached to .ears file which was selected for testing.</param>
+        /// <param name="sourceCode">Code which is extracted from .c file attached to .EARS file which was selected for testing.</param>
         private void GenerateMainForBufferedHandcoded(int index, ref string sourceCode)
         {
             string generatedAsserts = $"{ Environment.NewLine }// Generated asserts:{ Environment.NewLine }";
@@ -1602,6 +1785,332 @@ namespace InterLayerLib
             }
         }
 
+        public void generateSMTdata()
+        {
+            // Consolidate SMT data types
+            Dictionary<string, string> SMTvariables = new Dictionary<string, string>();
+            Dictionary<string, string> enumerationDataTypes = new Dictionary<string, string>();
+
+            for (int requirementIndex = 0; requirementIndex < systemModel.reqs.requirements.Count; requirementIndex++)
+            {
+                // Itereate over a copy of the list for given requirement
+                for (int varIndex = 0; varIndex < systemModel.reqs.RequirementVariableList[requirementIndex].Count; varIndex++)
+                {
+                    var var = systemModel.reqs.RequirementVariableList[requirementIndex][varIndex];
+                    if (var.datatype == StructVariable.DataType.SameAs || var.datatype == StructVariable.DataType.Unknown)
+                    {
+                        for (int requirementIndex2 = 0; requirementIndex2 < systemModel.reqs.requirements.Count; requirementIndex2++)
+                            if (requirementIndex2 != requirementIndex)
+                                foreach (var var2 in systemModel.reqs.RequirementVariableList[requirementIndex2].Where(y =>
+                                    ((var.name == y.name && var.datatype != y.datatype) ||
+                                     (var.instance == y.name && var.datatype == StructVariable.DataType.SameAs))
+                                    && y.datatype != StructVariable.DataType.Unknown && y.datatype != StructVariable.DataType.SameAs))
+                                {
+                                    systemModel.reqs.RequirementVariableList[requirementIndex][varIndex] =
+                                        new StructVariable(var.name, var2.datatype);
+                                    continue;
+                                }
+                    }
+                    else if (var.datatype == StructVariable.DataType.Enumeration)
+                    {
+                        if (enumerationDataTypes.ContainsKey(var.name))
+                            enumerationDataTypes[var.name] = string.Join(" ",
+                                       ($"{ enumerationDataTypes[var.name] } { var.instance }").Split(' ').Distinct().OrderBy(s => s));
+                        else
+                            enumerationDataTypes[var.name] = var.instance;
+                    }
+                }
+                foreach (var structvar in systemModel.reqs.RequirementVariableList[requirementIndex].OrderBy(x => -x.name.Length).Distinct())
+                    if (SMTvariables.ContainsKey(SystemModel.safeName(structvar.name)))
+                        SMTvariables[SystemModel.safeName(structvar.name)] = MoreSpecificDataType(SMTvariables[SystemModel.safeName(structvar.name)], structvar.datatype.ToString());
+                    else
+                        SMTvariables[SystemModel.safeName(structvar.name)] = structvar.datatype.ToString();
+            }
+
+            var undefined = SMTvariables.Where(x => x.Value == "SameAs" || x.Value == "Unknown").Select(x => x.Key);
+            if (undefined.Count() > 0)
+            {
+                _events(new CheckerWarningMessage("The following variables have undefined data types: " + string.Join(Environment.NewLine, undefined), "Undefined data types"));
+            }
+
+            string SMTDataTypesText = "";
+            string SMTVariables = "";
+            foreach (var en in enumerationDataTypes) // (declare-datatypes () ((MovementEnumeration SWIPING STATIC MOVING)))
+                SMTDataTypesText = $"{ SMTDataTypesText }{ systemModel.replaceWithSignalNames(en.Key, -1) }Enumeration { en.Value }))){ Environment.NewLine }";
+            foreach (var v in SMTvariables)
+                SMTVariables = $"{ SMTVariables }{ systemModel.replaceWithSignalNames(v.Key, -1) } { ((v.Value == "Enumeration") ? systemModel.replaceWithSignalNames(v.Key, -1) : "") }{ v.Value }){ Environment.NewLine }";
+            systemModel.reqs.SMTvariables = SMTVariables;
+            systemModel.reqs.SMTdatatypes = SMTDataTypesText;
+        }
+
+        /// <summary>
+        /// Functions returns more specific data type from the two
+        /// </summary>
+        /// <param name="v1"></param>
+        /// <param name="v2"></param>
+        /// <returns></returns>
+        private string MoreSpecificDataType(string v1, string v2)
+        {
+            if (v1.Equals("SameAs") || v1.Equals("Unknown") || 
+                (v2.Equals("Real") && v1.Equals("Int")) )
+                return v2;
+            else
+                return v1;
+        }
+
+        /// <summary>
+        /// Create dictionary of all conditions from all requirements in first time unit
+        /// </summary>
+        /// <param name="SMTreqs">SMT requirements</param>
+        /// <param name="requirementID">requirement ID</param>
+        /// <returns>dictionary of all conditions from all requirements in first time unit</returns>
+        private static Dictionary<string, Tuple<int, string>> getConditionsFromSMTRequirements(string SMTreqs, string requirementID)
+        {
+            string balancedParentheses = @"\((((?<BR>\()|(?<-BR>\))|[^()]*)+)\)";
+            var r1 = new Regex(@"(" + requirementID + @"-[0-9]+) \(\) Bool \(=> (" + balancedParentheses + @"|[A-Za-z_][A-Za-z_0-9]+)");
+            Dictionary<string, Tuple<int, string>> conditionsOfRequirements = new Dictionary<string, Tuple<int, string>>();
+            foreach (string SMTreq in SMTreqs.Split(new string[] { "(define-fun " }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                foreach (Match match in r1.Matches(SMTreq))
+                    if (!match.Groups[1].Value.StartsWith("x")) // Only conditions from requirements from fisrt time unit.
+                        if (!conditionsOfRequirements.ContainsKey(match.Groups[2].Value))
+                            conditionsOfRequirements[match.Groups[2].Value] = new Tuple<int, string>(conditionsOfRequirements.Count, match.Groups[1].Value);
+                Debug.Assert(r1.Matches(SMTreq).Count == 1 || r1.Matches(SMTreq).Count == 0);
+            }
+            return conditionsOfRequirements;
+        }
+
+        /// <summary>
+        /// Save all SMT data from all requirements to system name.temp
+        /// </summary>
+        private void save_SMT()
+        {
+            Stopwatch sw0 = new Stopwatch();
+            sw0.Start();
+            HashSet<string> SMTdatatypes = new HashSet<string>();
+            string SMTallvariables = "";
+            HashSet<string> SMTvariables = new HashSet<string>();
+            HashSet<string> xSMTvariables = new HashSet<string>(); // variables from different time units and missing variables
+            string SMTreqs = "";
+            string SMTrealisabilityHeuristics = "";
+            string SMTrealisabilityHeuristics2 = "";
+            Match m;//
+
+            // Merge all SMT requirements to SMTreqs.
+            // Create all variable declarations
+            // Create all data types definitions
+            for (int requirementIndex = 0; requirementIndex < systemModel.reqs.requirements.Count; requirementIndex++)
+                if (systemModel.reqs.getReqIFAttribute("Formalization Progress", ((XmlElement)systemModel.reqs.requirements[requirementIndex])) == "Formal")
+                    SMTreqs += systemModel.reqs.getReqIFAttribute("SMT requirements", ((XmlElement)systemModel.reqs.requirements[requirementIndex])) + Environment.NewLine;
+
+            foreach (string s in systemModel.reqs.SMTvariables.Split(new string[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries))
+                SMTvariables.Add($"(declare-const { s }");
+            foreach (string s in systemModel.reqs.SMTdatatypes.Split(new string[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries))
+                SMTdatatypes.Add($"(declare-datatypes () (({ s }");
+
+            // Add missing variable declarations for example from requirements refering to tables..
+            for (int requirementIndex = 0; requirementIndex < systemModel.reqs.requirements.Count; requirementIndex++)
+                if (systemModel.reqs.getReqIFAttribute("Formalization Progress", ((XmlElement)systemModel.reqs.requirements[requirementIndex])) == "Formal")
+                {
+                    foreach (var var in systemModel.allsignals.Select(sig => sig[systemModel.interfaceRequirement[(int)SystemModel.InterfaceTypes.Inputs].SignalNameIndex]))
+                        if (!SMTvariables.Any(s => Regex.IsMatch(s, @"\b" + var + @"\b")))
+                            if (Regex.IsMatch(SMTreqs, @"not " + var + @"\b")) // Infer datatype from variable usage
+                                xSMTvariables.Add($"(declare-const { var } Bool)");
+                            else if (Regex.IsMatch(SMTreqs, @"[<>=]+ " + var + @" [0-9]+"))
+                                xSMTvariables.Add($"(declare-const { var } Int)");
+                            else if (Regex.IsMatch(SMTreqs, @"[<>=]+ " + var + @" [0-9.]+"))
+                                xSMTvariables.Add($"(declare-const { var } Real)");
+                            else
+                                xSMTvariables.Add($"; { var } has unknown data type");
+                }
+
+            // Infer unknown data type from variables that already has known data type
+            foreach (var decl in xSMTvariables.Where(x => x.EndsWith(" has unknown data type")))
+            {
+                var var = SystemModel.safeName(decl.Replace(" has unknown data type", "").Replace("; ", ""));
+                foreach (Match match in Regex.Matches(SMTreqs, @"\([<>=]+ " + var + @" ([A-Za-z_][A-Za-z_0-9]+)\)|\([<>=]+ ([A-Za-z_][A-Za-z_0-9]+) " + var + @"\)"))
+                {
+                    string otherVar = match.Groups[1].Value + match.Groups[2].Value;
+                    if (xSMTvariables.Any(x => x.EndsWith($"{ otherVar } Bool)")))
+                        SMTvariables.Add($"(declare-const { var } Bool)");
+                    else if (xSMTvariables.Any(x => x.EndsWith($"{ otherVar } Int)")))
+                        SMTvariables.Add($"(declare-const { var } Int)");
+                    else if (xSMTvariables.Any(x => x.EndsWith($"{ otherVar } Real)")))
+                        SMTvariables.Add($"(declare-const { var } Real)");
+                }
+            }
+
+            // Add also variables from different time units
+            foreach (string s in SMTvariables)
+            {
+                string var = 'x' + Regex.Replace(s.Replace("(declare-const ", ""), @" [a-zA-Z0-9_]+\)", "");
+                // TODO Make sure there is are not xxvar already.
+                while ((m = Regex.Match(SMTreqs, @"\b(x*?" + var + @")\b")).Success)
+                {
+                    var = m.Groups[1].Value;
+                    xSMTvariables.Add($"(declare-const { var }{ s.Substring(s.LastIndexOf(' ')) }");
+                    var = $"x{ var }";
+                }
+            }
+
+            SMTvariables.UnionWith(xSMTvariables); // Complexity of this operation is ≈ O((log(|A∪B|) - log(|A|)) * |A∪B|) + O(|B|)
+
+            // Add requirement forms for different time units to fill the gaps
+            HashSet<string> xSMTreqsSet = new HashSet<string>();
+            int numberOfx = 1;
+            string xr;
+            string xreqvar;
+            HashSet<string> reqvars = new HashSet<string>();
+            /// For all requirement except of of those that specify initial conditions.
+            foreach (string r in SMTreqs.Split(new string[] { "(define-fun " }, StringSplitOptions.RemoveEmptyEntries).Where(s => s.Contains("=>")))
+            {
+                // get variables from the current requirement r and create its variant in future time units
+                //reqvars.Clear();
+                foreach (Match match in Regex.Matches(r, @"\bx*(([A-Za-z_][A-Za-z_0-9]+))\b"))
+                    if (SMTvariables.Any(s => s.StartsWith($"(declare-const { match.Groups[1].Value } "))) // if it is real variable
+                        reqvars.Add(match.Groups[1].Value);
+                // if some of the variables exists in different time units.
+                foreach (var reqvar in reqvars)
+                {
+                    xreqvar = reqvar;
+                    xr = r;
+                    while (SMTvariables.Any(s => (m = Regex.Match(s, @"\(declare-const (x+)" + xreqvar)).Success && (numberOfx = m.Groups[1].Value.Length) > 0))
+                        for (int i = 1; i <= numberOfx; i++)
+                        {   // Replace the variables with the once from next time unit.
+                            foreach (var rv in reqvars)
+                                xr = xr.Replace(rv, $"x{ rv }");
+                            xr = Regex.Replace(xr, @"^([^ ]+ )", "x$1");
+                            xSMTreqsSet.Add($"(define-fun { xr }");
+                            xreqvar = $"x{ xreqvar }";
+                        }
+                }
+            }
+            SMTreqs += Environment.NewLine + string.Join(Environment.NewLine, xSMTreqsSet);
+
+            // TODO refactor
+            // Add also variables from different time units after the time gaps were filled.
+            Stopwatch sw = new Stopwatch();
+            sw.Start();
+            foreach (string s in SMTvariables)
+            {
+                string var = 'x' + Regex.Replace(s.Replace("(declare-const ", ""), @" [a-zA-Z0-9_]+\)", "");
+                // TODO Make sure there is are not xxvar already.
+                while (Regex.IsMatch(SMTreqs, @"\b(x*" + var + @")\b"))
+                {
+                    // If the variable does not exist in the next time unit, find the soonest time unit when it exists
+                    if (!(m = Regex.Match(SMTreqs, @"\b(" + var + @")\b")).Success)
+                    {
+                        // find the shortest match
+                        MatchCollection mc = Regex.Matches(SMTreqs, @"\b(x*?" + var + @")\b");
+                        m = mc[0];
+                        for (int i = 1; i < mc.Count; i++)
+                            if (m.Length > mc[i].Length)
+                                m = mc[i];
+                    }
+                    var = SystemModel.safeName(m.Groups[1].Value);
+
+                    xSMTvariables.Add($"(declare-const { var }{ s.Substring(s.LastIndexOf(' ')) }");
+                    var = $"x{ var }";
+                }
+            }
+            sw.Stop();
+            SMTvariables.UnionWith(xSMTvariables); // Complexity of this operation is ≈ O((log(|A∪B|) - log(|A|)) * |A∪B|) + O(|B|)
+
+            // make the variable data types unique:
+            SMTallvariables = string.Join(Environment.NewLine, SMTvariables);
+            string SMTLogicalConsistencyAssert = "(assert (and ";
+            foreach (Match match in Regex.Matches(SMTreqs, @"\(define-fun ([^ ]+ )"))
+                SMTLogicalConsistencyAssert += match.Groups[1].Value;
+
+            SMTLogicalConsistencyAssert += $")){ Environment.NewLine }(check-sat){ Environment.NewLine }";
+
+            Dictionary<string, Tuple<int, string>> conditionsOfRequirements = getConditionsFromSMTRequirements(SMTreqs, "[^ ]+"); // any requirement ID
+
+            Dictionary<string, Tuple<int, string>> InputsOnlyConditionsOfRequirements = new Dictionary<string, Tuple<int, string>>();
+            IEnumerable<string> signalsWithSignalNames;
+            if (systemModel.interfaceRequirement[(int)SystemModel.InterfaceTypes.Internals].SignalNameIndex != -1 && systemModel.interfaceRequirement[(int)SystemModel.InterfaceTypes.Outputs].SignalNameIndex != -1)
+                signalsWithSignalNames = systemModel.interfaceRequirement[(int)SystemModel.InterfaceTypes.Outputs].signals.Select(s => s[systemModel.interfaceRequirement[(int)SystemModel.InterfaceTypes.Outputs].SignalNameIndex]).Concat(
+                    systemModel.interfaceRequirement[(int)SystemModel.InterfaceTypes.Internals].signals.Select(s => s[systemModel.interfaceRequirement[(int)SystemModel.InterfaceTypes.Internals].SignalNameIndex]));
+            else if (systemModel.interfaceRequirement[(int)SystemModel.InterfaceTypes.Outputs].SignalNameIndex != -1)
+                signalsWithSignalNames = systemModel.interfaceRequirement[(int)SystemModel.InterfaceTypes.Outputs].signals.Select(s => s[systemModel.interfaceRequirement[(int)SystemModel.InterfaceTypes.Outputs].SignalNameIndex]);
+            else if (systemModel.interfaceRequirement[(int)SystemModel.InterfaceTypes.Internals].SignalNameIndex != -1)
+                signalsWithSignalNames = systemModel.interfaceRequirement[(int)SystemModel.InterfaceTypes.Outputs].signals.Select(s => s[systemModel.interfaceRequirement[(int)SystemModel.InterfaceTypes.Internals].SignalNameIndex]);
+            else signalsWithSignalNames = new List<string>();
+            string commulativeConditions = "";
+            string standaloneCondition = "";
+            string requirementID;
+            for (int requirementIndex = 0; requirementIndex < systemModel.reqs.requirements.Count; requirementIndex++)
+            {
+                requirementID = systemModel.reqs.getReqIFAttribute("IDENTIFIER", (XmlElement)systemModel.reqs.requirements[requirementIndex]);
+                if (requirementIndex > 0 && systemModel.reqs.isPrioritized())
+                {
+                    commulativeConditions = systemModel.reqs.getReqIFAttribute("Commulative Conditions", (XmlElement)systemModel.reqs.requirements[requirementIndex - 1]);
+                    standaloneCondition = systemModel.reqs.getReqIFAttribute("Standalone Condition", (XmlElement)systemModel.reqs.requirements[requirementIndex]);
+                }
+                if (SMTreqs.Contains($"(define-fun { requirementID }"))
+                    foreach (var condition in getConditionsFromSMTRequirements(SMTreqs.Substring(SMTreqs.IndexOf($"(define-fun { requirementID }")), requirementID))
+                        SMTrealisabilityHeuristics += $"(push){ Environment.NewLine }(echo \"{ condition.Value.Item2 }:\"){ Environment.NewLine }" +
+                            $"(assert (= { ((standaloneCondition != "") ? standaloneCondition : condition.Key) } true)){ Environment.NewLine }" +
+                            ((commulativeConditions != "") ? $"{ commulativeConditions.Replace(";", ")" + Environment.NewLine + "(assert ").TrimStart(')') }){ Environment.NewLine }" : "") +
+                            $"(check-sat){ Environment.NewLine }(get-unsat-core){ Environment.NewLine }(pop){ Environment.NewLine }{ Environment.NewLine }";
+            }
+            foreach (var condition in conditionsOfRequirements)
+            {
+                // Check if every condition could be triggered
+                if (conditionsOfRequirements.Count < 29 && (!systemModel.reqs.isPrioritized()))
+                {
+                    // Detect if current condition contains only input variables.
+                    bool conditionWithInputsOnly = true;
+                    foreach (var sig in signalsWithSignalNames) // for output and internal requirement only
+                        if (Regex.IsMatch(condition.Key, @"\bx*" + sig + @"\b"))
+                        {
+                            conditionWithInputsOnly = false;
+                            continue;
+                        }
+
+                    // For conditions that contain input variables only
+                    if (conditionWithInputsOnly)
+                        InputsOnlyConditionsOfRequirements[condition.Key] = condition.Value;
+                }
+            }
+            if (conditionsOfRequirements.Count < 29 && (!systemModel.reqs.isPrioritized()))
+                foreach (var condition in InputsOnlyConditionsOfRequirements)
+                    // Check if every combination of conditions could be triggered
+                    foreach (var condition2 in InputsOnlyConditionsOfRequirements.Where(c => c.Value.Item1 > condition.Value.Item1))
+                        SMTrealisabilityHeuristics2 += $"(push){ Environment.NewLine }(echo \"{ condition.Value.Item2 } and { condition2.Value.Item2 }:\")" +
+                            $"{ Environment.NewLine }(assert (= { condition.Key } true)){ Environment.NewLine }(assert (= { condition2.Key } true))" +
+                            $"{ Environment.NewLine }(check-sat){ Environment.NewLine }(get-model){ Environment.NewLine }" +
+                            $"{ SMTLogicalConsistencyAssert }(pop){ Environment.NewLine }{ Environment.NewLine }";
+
+            string SMTall = $"(set-option :produce-unsat-cores true){ Environment.NewLine }{ string.Join(Environment.NewLine, SMTdatatypes) }" +
+                $"{ Environment.NewLine }{ SMTallvariables }{ Environment.NewLine }{ SMTreqs }" +
+                $"{ Environment.NewLine }(push) ; logical consistency{ Environment.NewLine }" +
+                $"{ SMTLogicalConsistencyAssert }{ Environment.NewLine }{ Environment.NewLine }{ SMTrealisabilityHeuristics }{ Environment.NewLine }" +
+                $"{ Environment.NewLine }(pop) ; logical consistency{ Environment.NewLine }{ SMTrealisabilityHeuristics2 }{ Environment.NewLine }" +
+                $"(get-info :all-statistics){ Environment.NewLine }(exit)";
+
+            // Make sure that enumeration items are unique
+            foreach (string datatype in SMTdatatypes.Where(dt => dt.Contains("Enumeration ")).OrderByDescending(s => s.Remove(s.IndexOf("Enumeration ")).Length))
+                foreach (Match match in Regex.Matches(datatype.Substring(datatype.IndexOf("Enumeration ") + "Enumeration ".Length), @"[A-Za-z_0-9]+[ \)]"))
+                    foreach (string datatype2 in SMTdatatypes.Where(dt => dt.Contains("Enumeration ")).Where(x => x != datatype).OrderByDescending(s => s.Remove(s.IndexOf("Enumeration ")).Length))
+                        foreach (var match2 in Regex.Matches(datatype2, @" " + match.Value.Trim(' ', ')') + @"[ \)]"))
+                        {
+                            string nonUniqueItem = match.Value.Trim(' ', ')');
+                            string varName = Regex.Match(datatype, @"\(\((.+)Enumeration ").Groups[1].Value;
+                            SMTall = Regex.Replace(SMTall, @"(" + varName + @"(Enumeration[^\)]*)? )(" + nonUniqueItem + @")([ \)])", "$1$3_" + varName + "$4");
+                        }
+            Dictionary<string, InputFile> systemFiles = systemModel.buildSystemFiles(Application.LocalUserAppDataPath);
+
+            if (!ReportMissingIncludes(systemFiles))
+            {
+                _events(new CheckerWarningMessage("The following include files are missing: " + Environment.NewLine +
+                    string.Join(Environment.NewLine, systemFiles.Where(f => f.Key.StartsWith("Missing-source-code"))), "Missing include files"));
+            }
+
+            File.WriteAllText(Path.Combine(systemFiles["SMT"].localPath, systemFiles["SMT"].localName), SMTall);
+            sw0.Stop();
+        }
+
         /// \brief Saves LTL properties and its propositions into .inc file
         /// <summary>
         /// Saves LTL properties and its propositions into .inc file.
@@ -1676,6 +2185,18 @@ namespace InterLayerLib
                         "Unable to store the source code with asserts"));
                 }
             }
+            else
+                try
+                {
+                    generateSMTdata(); // Consolidate SMT data types
+                    save_SMT();
+                }
+                catch (Exception ex)
+                {
+                    _events(new CheckerWarningMessage(
+                        $"{ Path.ChangeExtension(systemModel.systemPath, ".temp") }:{ Environment.NewLine }{ ex.Message }",
+                        "Unable to store the temporary file"));
+                }
 
             XmlElement currentReq = systemModel.reqs.current();
             currentReq = originalCurrentRequirement; // The original current requirement shall be reinstated
@@ -1691,8 +2212,13 @@ namespace InterLayerLib
                         "Unable to store the CLIPS rules as .gal file."));
                 }
                 try
-                { 
-                    MachineReasoning.saveCLIPS(ref systemModel); // save equivalent representation in EARS Requirement Document
+                {
+                    string TSTEARSFileName = Path.ChangeExtension(systemModel.reqs.RequirementDocumentFilename, "tst.EARS").Replace(".tst.","_tst.");
+                    string TSTEARSContent = MachineReasoning.saveEARS(ref systemModel, TSTEARSFileName); // save equivalent representation in EARS Requirement Document for testing
+                    string TSTArchiveFileName = TestGeneration.GenerateHiLiTEZipFromEARS(TSTEARSFileName, TSTEARSContent, systemModel.reqs.SMTvariables, systemModel.reqs.SMTdatatypes, TSTEARSContent);
+                    importSystemArchiveFile(TSTArchiveFileName);
+                    //StartTestCasesGeneration();
+                    numberOfProperties = Regex.Matches(TSTEARSContent, Requirements.EARS_ID_RegEX).Count;
                 }
                 catch (Exception ex)
                 {
@@ -1736,13 +2262,21 @@ namespace InterLayerLib
                 ts.Seconds);
         }
 
-        public void cancelVerification()
+        public void cancelTestCasesGeneration()
         {
-            verifier.cancelVerification();
             if (testCasesCancellationSource != null)
             {
                 testCasesCancellationSource.Cancel();
             }
+            else
+            {
+                _events(new CheckerWarningMessage("Attempt to cancel test case generation while NO test cases generation is running.", "Warning"));
+            }
+        }
+
+        public void cancelVerification()
+        {
+            verifier.cancelVerification();
             ToolKit.Cancel();
             summCreated = false;
             this.verificationTable = new VerificationTable();
@@ -1820,12 +2354,92 @@ namespace InterLayerLib
             ToolKit.Trace("[EXIT]");
         }
 
+        public void StartTestCasesGeneration()
+        {
+            if (systemArchiveFile != null && File.Exists(systemArchiveFile))
+            {
+                _events(new CheckerVerificationNotification(VerificationNotificationType.testCasesStart));
+
+                this.testCasesCancellationSource = new CancellationTokenSource();
+                Task<InfoFile>.Run(() =>
+                {
+                    // WARNING: the following commented line is alright but in debug it throws user-unhendled exception even the exception is handled in below commented code (issue has been reported by community to microsoft)..this is part #1
+                    //return WebUtility.runHiliteVerification(HiLiTEFile, testCasesCancellationSource.Token);
+                    try
+                    {
+                        return WebUtility.runHiliteVerification(systemArchiveEntries.FirstOrDefault(e => e.EndsWith(".EARS")) != null,
+                            systemArchiveFile, (string status) => { _events(new CheckerTestCasesStatus(status)); } , testCasesCancellationSource.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        _events(new CheckerVerificationNotification(VerificationNotificationType.testCasesCanceled));
+                        return abortTask();
+                    }
+                    catch (Exception e)
+                    {
+                        _events(new CheckerErrorMessage(e.Message));
+                        _events(new CheckerVerificationNotification(VerificationNotificationType.testCasesCanceled));
+                        _events(new CheckerTestCasesStatus("failed"));
+                        return abortTask();
+                    }
+                    // END of part #1
+                }).ContinueWith((theResultsFile) =>
+                {
+                    // WARNING: the following commented lines are alright but in debug it throws user-unhendled exception even the exception is handled in below commented code (issue has been reported by community to microsoft)..this is part #2
+                    //if (theResultsFile.IsFaulted)
+                    //{
+                    //    // TO-DO: theResultsFile.Exception.Message should be change by concatenating the InnerException property
+                    //    _events(new CheckerErrorMessage(theResultsFile.Exception.Message));
+                    //    _events(new CheckerVerificationNotification(VerificationNotificationType.testCasesCanceled));
+                    //}
+                    //else if (theResultsFile.IsCanceled)
+                    //{
+                    //    _events(new CheckerWarningMessage(theResultsFile.Exception.Message));
+                    //    _events(new CheckerVerificationNotification(VerificationNotificationType.testCasesCanceled));
+                    //}
+                    //else
+                    //{
+                    //    List<string> newTestCases = new List<string>();
+                    //    newTestCases.Add(theResultsFile.Result);
+                    //    _events(new CheckerNewTestCases(newTestCases));
+                    //    _events(new CheckerVerificationNotification(VerificationNotificationType.testCasesEnd));
+                    //}
+                    if (theResultsFile.Result.fileName != "<<ABORT>>")
+                    {
+                        // if there is session directory at the start of the path -> remove it from fileName
+                        if (_directory != null && _directory.Length > 0)
+                        {
+                            int sessionDirectoryIdx = theResultsFile.Result.fileName.IndexOf(_directory);
+                            if (sessionDirectoryIdx == 0)
+                            {
+                                theResultsFile.Result.fileName = theResultsFile.Result.fileName.Remove(sessionDirectoryIdx, _directory.Length + 1);
+                            }
+                        }
+                        var newTestCases = new List<InfoFile>();
+                        newTestCases.Add(theResultsFile.Result);
+                        _events(new CheckerNewTestCases(newTestCases));
+                        _events(new CheckerVerificationNotification(VerificationNotificationType.testCasesEnd));
+                    }
+                    // END of part #2
+                });
+            }
+        }
+
+        private Task<InfoFile> abortTask()
+        {
+            Task<InfoFile> newTask = new Task<InfoFile>(() => new InfoFile("<<ABORT>>", ""));
+            newTask.Start();
+
+            return newTask;
+        }
+
         public void StartVerification(bool vacuityCheck)
         {
             ToolKit.Trace("[ENTER]");
             // setup the state of summary
             //checker.summCreated = false;
-            systemModel.reqs.unsatisfiedRequirements.Clear();
+            //systemModel.reqs.unsatisfiedRequirements.Clear();
+            //systemModel.reqs.Rules.Clear();
 
             // Check also vacuity?
             //bool shiftPressed = false;
@@ -1865,15 +2479,11 @@ namespace InterLayerLib
             for (int requirementIndex = 0; requirementIndex < systemModel.reqs.requirements.Count; requirementIndex++)
             {
                 requirementText = ToolKit.XMLDecode(((XmlElement)systemModel.reqs.requirements[requirementIndex]).GetAttribute("DESC"));
+                systemModel.reqs.requirementIndex = requirementIndex; // Set the current requirement to this one
                 systemModel.reqs.setReqIFAttribute("Requirement Pattern", "Structured Requirement");
                 systemModel.reqs.setReqIFAttribute("DESC", requirementText);
-                systemModel.reqs.requirementIndex = requirementIndex; // Set the current requirement to this one
-                if (systemModel.reqs.RequirementDocumentFilename.EndsWith(".clp"))
-                {
-                    var Rule = systemModel.reqs.CLIPS2Petri(requirementText, requirementIndex);
-                    systemModel.reqs.Rules.Add(Rule.Key, Rule.Value);
-                    requirementText = systemModel.reqs.CLIPS2EARS(requirementText);
-                }
+                
+                systemModel.reqs.setReqIFAttribute("EARS from CLIPS", requirementText);
                 formalizeStructuredRequirement(requirementText);
             }
 
@@ -1886,13 +2496,22 @@ namespace InterLayerLib
             //checker.systemModel = checker.systemModel;
             // Split requirements into (mutually disjoint) groups. Each group corresponds to one verification task, which will be executed on one or more verification tools.
             requirementsGroupsToBeVerified = groupRequirementsForVerification(); //Must be called after saveProperties since it needs ltl.normalizedProperties                
-                                                                                                 // For C/C++ verification make sure that the number of requirement groups is the same as the number of C/C++ files.
+            // For C/C++ verification make sure that the number of requirement groups is the same as the number of C/C++ files.
 
             // For each group of verified requirements and for each verification tool create a verification task.
             verifier.createVerificationTasks(this, ref verificationToolBag);
 
             if (verifier.applicableTools.Count != 0)
             {
+                //    if (Program.showGui)
+                //    {
+                //        // Display the verification results table. (Run in a separate thread?)
+                //        createSummary();
+                //    }
+                //    else
+                //    {
+                //        summ = new Summary();
+                //    }
                 showSummary();
                 Application.DoEvents();
 
@@ -1901,6 +2520,7 @@ namespace InterLayerLib
                 {
                     //Application.UseWaitCursor = false;
                     ToolKit.Trace("[EXIT]");
+                    _events(new CheckerWarningMessage("There are no requirements to verify!", "Warning"));
                     return;
                 }
 
@@ -1913,6 +2533,99 @@ namespace InterLayerLib
                 {
                     verifier.remainingSMVLTLSPEC.Add(item);
                 }
+
+                //checker.verifier.createAutomationPlanAndRequest(numberOfProperties.ToString(), headAutomationServer, allSMVLTLSPEC);
+                //if (Program.showGui)
+                //{
+                //    string VerificationType = "Requirement Semantic Analysis";
+                //    if (checker.systemModel.exists()) // Only for requirement semantic analysis, start also second type of verification
+                //        VerificationType = "Formal Verification";
+                //    summ.Text = VerificationType;
+
+                //    buttonVerify.Text = "Cancel";
+                //    toolTip1.SetToolTip(buttonVerify, "Cancel the verification");
+                //}
+
+                //string EARSFileName = Path.ChangeExtension(Path.GetFileName(systemModel.reqs.RequirementDocumentFilename), ".EARS");
+                //if (File.Exists(EARSFileName))
+                //{
+                //    _events(new CheckerVerificationNotification(VerificationNotificationType.testCasesStart));
+
+                //    this.testCasesCancellationSource = new CancellationTokenSource();
+
+                //    Task<string>.Run(() =>
+                //    {
+                //        string HiLiTEFile;
+                //        try
+                //        {
+                //            HiLiTEFile = TestGeneration.GenerateHiLiTEZipFromEARS(
+                //                EARSFileName, string.Join(Environment.NewLine, systemModel.reqs.listOfRequirements()));
+                //        }
+                //        catch (Exception e)
+                //        {
+                //            _events(new CheckerErrorMessage(e.Message));
+                //            _events(new CheckerVerificationNotification(VerificationNotificationType.testCasesCanceled));
+                //            return "<<ABORT>>";
+                //        }
+
+                //        if (File.Exists(HiLiTEFile))
+                //        {
+                //            // WARNING: the following commented line is alright but in debug it throws user-unhendled exception even the exception is handled in below commented code (issue has been reported by community to microsoft)..this is part #1
+                //            //return WebUtility.runHiliteVerification(HiLiTEFile, testCasesCancellationSource.Token);
+                //            try
+                //            {
+                //                return WebUtility.runHiliteVerification(HiLiTEFile, testCasesCancellationSource.Token);
+                //            }
+                //            catch (OperationCanceledException)
+                //            {
+                //                _events(new CheckerVerificationNotification(VerificationNotificationType.testCasesCanceled));
+                //                return "<<ABORT>>";
+                //            }
+                //            catch (Exception e)
+                //            {
+                //                _events(new CheckerErrorMessage(e.Message));
+                //                _events(new CheckerVerificationNotification(VerificationNotificationType.testCasesCanceled));
+                //                return "<<ABORT>>";
+                //            }
+                //            // END of part #1
+                //        }
+                //        else
+                //        {
+                //            _events(new CheckerErrorMessage("Hilite file failed to generate from EARS."));
+                //            _events(new CheckerVerificationNotification(VerificationNotificationType.testCasesCanceled));
+                //            return "<<ABORT>>";
+                //        }
+                //    }).ContinueWith((theResultsFile) =>
+                //    {
+                //        // WARNING: the following commented lines are alright but in debug it throws user-unhendled exception even the exception is handled in below commented code (issue has been reported by community to microsoft)..this is part #2
+                //        //if (theResultsFile.IsFaulted)
+                //        //{
+                //        //    // TO-DO: theResultsFile.Exception.Message should be change by concatenating the InnerException property
+                //        //    _events(new CheckerErrorMessage(theResultsFile.Exception.Message));
+                //        //    _events(new CheckerVerificationNotification(VerificationNotificationType.testCasesCanceled));
+                //        //}
+                //        //else if (theResultsFile.IsCanceled)
+                //        //{
+                //        //    _events(new CheckerWarningMessage(theResultsFile.Exception.Message));
+                //        //    _events(new CheckerVerificationNotification(VerificationNotificationType.testCasesCanceled));
+                //        //}
+                //        //else
+                //        //{
+                //        //    List<string> newTestCases = new List<string>();
+                //        //    newTestCases.Add(theResultsFile.Result);
+                //        //    _events(new CheckerNewTestCases(newTestCases));
+                //        //    _events(new CheckerVerificationNotification(VerificationNotificationType.testCasesEnd));
+                //        //}
+                //        if (theResultsFile.Result != "<<ABORT>>")
+                //        {
+                //            List<string> newTestCases = new List<string>();
+                //            newTestCases.Add(theResultsFile.Result);
+                //            _events(new CheckerNewTestCases(newTestCases));
+                //            _events(new CheckerVerificationNotification(VerificationNotificationType.testCasesEnd));
+                //        }
+                //        // END of part #2
+                //    });
+                //}
 
                 // Start standard verification. In case of requirement semantic analysis, start first realizability heuristics by default 
                 // In case of formal verification, perform vacuity checking when shift is true.
@@ -2068,6 +2781,257 @@ namespace InterLayerLib
             systemModel.reqs.setReqIFAttribute("Requirement Pattern", requirementPattern);
         }
 
+        public List<HighlightItem> additionalHighlight(string text)
+        {
+            List<HighlightItem> highlights = new List<HighlightItem>();
+
+            // TO-DO: detect which highlighter to use dependent on requirements/rules and run it
+            if (systemModel.reqs.RequirementDocumentFilename.EndsWith(".clp"))
+            {
+                var codingStandardRules = new Dictionary<int, string>
+                {
+                    [1] = "Rule 1: The file type used for code shall be source code file (*.clp) in textual form. Bsave and Bload commands should not be used to save or load binary format of the files.",
+                    [2] = "Rule 2: Each code file can be interpreted without errors and produce no unjustified warnings. Manipulating error codes is not allowed.",
+                    [6] = "Rule 6: Input slots shall be differentiated from internal slots within deftemplate by a comment “Slots below are internal only.” While values of input slots can be changed from system environment, internal slots can be modified only by the rules or introduced when whole new fact comes as the input.",
+                    [7] = "Rule 7: Number of fact instances shall be limited in total per system execution by a comment next to a fact name (for example, “1 instance” or “at most 100 instances”), or per time interval (for example: “at most 100 new instances per minute”).",
+                    [8] = "Rule 8: All deftemplate slots shall comment if some of their slots are unique, for example by adding: “unique” keyword in the comment.",
+                    [11] = "Rule 11: Variable names shall be in lowercase starting with a question mark.",
+                    [14] = "Rule 14: Variables with the name \"true\" and \"false\" shall not be used since it could be confused with their uppercase version.",
+                    [28] = "Rule 28: Undefrule shall not be used.",
+                    [29] = "Rule 29: Defglobal constructs shall be used only during application initialization. Creating, modifying, or deleting a global variable during inference of a rule is prohibited.",
+                    [30] = "Rule 30: Generic functions shall not be used.",
+                    [34] = "Rule 34: Object-oriented programming shall be used neither directly nor using API calls.",
+                    [35] = "Rule 35: Non-deterministic techniques (random conflict resolution strategy or generating random numbers) shall not be used.",
+                    [36] = "Rule 36: Environment affecting functions such as breakpoints that allow manipulation with rule execution shall not be used at runtime.",
+                    [39] = "Rule 39: Command set-salience-evaluation and its API equivalent shall not be used to set the salience to dynamic.",
+                    [42] = "Rule 42: File based I/O is only allowed at initialization or during continuous data logging defined by requirements.",
+                    [45] = "Rule 45: Memory management related functions(such as release - mem, conserve - mem) shall not be used.",
+                    [47] = "Rule 47: Functions which can execute CLIPS code directly from its argument (eval, build) shall not be used. This applies also to the corresponding API calls.",
+                    [48] = "Rule 48: Gensym feature shall not be used. Other methods providing dynamic arguments (like str-assert) cannot be used in the first position of an ordered fact.",
+                    [50] = "Rule 50: Sending debug information to standard output shall be removed from certified software.This also applies to watching variables, verbose output using dribble-on, and the corresponding API calls.",
+                    [990] = "An expression found in the default attribute does not match the allowed type for FLOAT.",
+                    [991] = "An expression found in the first range attribute does not match the allowed type for FLOAT.",
+                    [992] = "An expression found in the second range attribute does not match the allowed type for FLOAT.",
+                    [993] = "An expression found in the default attribute does not match the allowed type for INTEGER.",
+                    [994] = "An expression found in the first range attribute does not match the allowed type for INTEGER.",
+                    [995] = "An expression found in the second range attribute does not match the allowed type for INTEGER.",
+                };
+                var codingStandardForbidden = new Dictionary<string, int>
+                {
+                    ["active-duplicate-instance"] = 34,
+                    ["active-initialize-instance"] = 34,
+                    ["active-make-instance"] = 34,
+                    ["active-message-duplicate-instance"] = 34,
+                    ["active-message-modify-instance"] = 34,
+                    ["active-modify-instance"] = 34,
+                    ["any-factp"] = 34,
+                    ["any-instancep"] = 34,
+                    ["bload"] = 34,
+                    ["bload-instances"] = 34,
+                    ["browse-classes"] = 34,
+                    ["bsafe"] = 34,
+                    ["bsave-instances"] = 34,
+                    ["build"] = 47,
+                    ["call-next-handler"] = 34,
+                    ["call-next-method"] = 34,
+                    ["call-specific-method"] = 34,
+                    ["class"] = 34,
+                    ["class-abstractp"] = 34,
+                    ["class-existp"] = 34,
+                    ["class-reactivep"] = 34,
+                    ["class-slots"] = 34,
+                    ["class-subclasses"] = 34,
+                    ["class-superclasses"] = 34,
+                    ["EARS-error"] = 4,
+                    ["conserve-mem"] = 45,
+                    ["defclass-module"] = 34,
+                    ["defgeneric-module"] = 30,
+                    ["definstances-module"] = 34,
+                    ["delayed-do-for-all-instances"] = 34,
+                    ["delete-instance"] = 34,
+                    ["describe-class"] = 34,
+                    ["do-for-all-instances"] = 34,
+                    ["do-for-fact"] = 34,
+                    ["do-for-instances"] = 34,
+                    ["duplicate-instance"] = 34,
+                    ["dynamic-get"] = 34,
+                    ["dynamic-put"] = 34,
+                    ["edit"] = 42,
+                    ["eval"] = 47,
+                    ["find-all-facts"] = 34,
+                    ["find-all-instances"] = 34,
+                    ["find-fact"] = 34,
+                    ["find-instance"] = 34,
+                    ["get-defclass-list"] = 34,
+                    ["get-defgeneric-list"] = 30,
+                    ["get-definstances-list"] = 34,
+                    ["get-defmethod-list"] = 34,
+                    ["get-error"] = 2,
+                    ["get-method-restrictions"] = 34,
+                    ["initialize-instance"] = 34,
+                    ["instance-address"] = 34,
+                    ["instance-addressp"] = 34,
+                    ["instance-existp"] = 34,
+                    ["instance-name"] = 34,
+                    ["instance-namep"] = 34,
+                    ["instance-name-to-symbol"] = 34,
+                    ["instancep"] = 34,
+                    ["instances"] = 34,
+                    ["list-defclasses"] = 34,
+                    ["list-defgenerics"] = 30,
+                    ["list-definstances"] = 34,
+                    ["list-defmessage-handlers"] = 34,
+                    ["list-defmethods"] = 34,
+                    ["lo"] = 1,
+                    ["load-instances"] = 34,
+                    ["logical"] = 34,
+                    ["make-instance"] = 34,
+                    ["message-duplicate-instance"] = 34,
+                    ["message-handler-existp"] = 34,
+                    ["message-modify-instance"] = 34,
+                    ["modify-instance"] = 34,
+                    ["next-handlerp"] = 34,
+                    ["next-methodp"] = 34,
+                    ["object-pattern-match-delay"] = 34,
+                    ["override-next-handler"] = 34,
+                    ["override-next-handler"] = 34,
+                    ["pointerp"] = 45,
+                    ["ppdefclass"] = 34,
+                    ["ppdefgeneric"] = 30,
+                    ["ppdefinstances"] = 34,
+                    ["ppdefmessage-handler"] = 34,
+                    ["ppdefmethod"] = 34,
+                    ["ppinstance"] = 34,
+                    ["preview-generic"] = 30,
+                    ["preview-send"] = 34,
+                    ["primitives-info"] = 50,
+                    ["put"] = 34,
+                    ["random"] = 35,
+                    ["refresh"] = 36,
+                    ["refresh-agenda"] = 36,
+                    ["release-mem"] = 45,
+                    ["restore-instances"] = 34,
+                    ["save-instances"] = 34,
+                    ["seed"] = 35,
+                    ["send"] = 34,
+                    ["set-dynamic-constraint-checking"] = 40,
+                    ["set-error"] = 2,
+                    ["setgen"] = 48,
+                    ["set-salience-evaluation"] = 39,
+                    ["slot-allowed-values"] = 34,
+                    ["slot-cardinality"] = 34,
+                    ["slot-delete$"] = 34,
+                    ["slot-direct-accessp"] = 34,
+                    ["slot-direct-delete$"] = 34,
+                    ["slot-direct-insert$"] = 34,
+                    ["slot-direct-replace$"] = 34,
+                    ["slot-existp"] = 34,
+                    ["slot-facets"] = 34,
+                    ["slot-initablep"] = 34,
+                    ["slot-insert$"] = 34,
+                    ["slot-publicp"] = 34,
+                    ["slot-range"] = 34,
+                    ["slot-replace$"] = 34,
+                    ["slot-sources"] = 34,
+                    ["slot-types"] = 34,
+                    ["slot-writablep"] = 34,
+                    ["subclassp"] = 34,
+                    ["superclassp"] = 34,
+                    ["symbol-to-instance-name"] = 34,
+                    ["toss"] = 42,
+                    ["undefclass"] = 34,
+                    ["undefgeneric"] = 30,
+                    ["undefglobal"] = 29,
+                    ["undefinstances"] = 34,
+                    ["undefmessage-handler"] = 34,
+                    ["undefmethod"] = 34,
+                    ["undefrule"] = 28,
+                    ["unmake-instance"] = 34,
+                };
+
+                Debug.Assert(!codingStandardForbidden.Values.Distinct().ToList().Any(ruleNumber => !codingStandardRules.Keys.Contains(ruleNumber)), $"The rule number { string.Join(", ", codingStandardForbidden.Values.Distinct().ToList().Select(ruleNumber => !codingStandardRules.Keys.Contains(ruleNumber))) } is not defined in codingStandardRules.");
+
+                foreach (var forbidden in codingStandardForbidden.Keys)
+                {
+                    Regex forbiddenRegex = new Regex(@"\((((?<BR>\()|(?<-BR>\))|" + forbidden + @"[^()]*)+)\)"); // matches balanced parentheses only
+                    foreach (Match m in forbiddenRegex.Matches(text))
+                    {
+                        highlights.Add(new HighlightItem(m.Index, m.Index + m.Length - 1, "ERROR", codingStandardRules[codingStandardForbidden[forbidden]]));
+                    }
+                }
+                var codingStandardSpecial = new Dictionary<string, int>
+                {
+                    // Special rules
+                    [@"\?[A-Z][A-Za-z0-9]*"] = 11,
+                    [@"\?[A-Z][A-Za-z0-9]*"] = 11,
+                    // not from the table
+                    [@"(?<!\w)(false|true)(?!\w)"] = 14,
+                    // highlighting the error when the slot type if FLOAT but the default value or the range does not correspond.
+                    [@"\(type\s*FLOAT\)(\s*\(range[^\)]*\))?\s*\(default\s*\-?\d*\)"] = 990,
+                    [@"\(default\s*\-?\d*\)(\s*\(range[^\)]*\))?\s*\(type\s*FLOAT\)"] = 990,
+                    [@"\(type\s*FLOAT\)(\s*\(default[^\)]*\))?\s*\(range\s*\-?\d*\s*\-?\d*\.\d*\)"] = 991,
+                    [@"\(type\s*FLOAT\)(\s*\(default[^\)]*\))?\s*\(range\s*\-?\d*\s*\-?\d*\.\d*\)"] = 991,
+                    [@"\(range\s*\-?\d*\.\d*\s*\-?\d*\)(\s*\(default[^\)]*\))?\s*\(type\s*FLOAT\)"] = 992,
+                    [@"\(range\s*\-?\d*\s*\-?\d*\.\d*\)(\s*\(default[^\)]*\))?\s*\(type\s*FLOAT\)"] = 992,
+                    // highlighting the error when the slot type if INTEGER but the default value or the range does not correspond.
+                    [@"\(type\s*INTEGER\)(\s*\(range[^\)]*\))?\s*\(default\s+\-?\d*([^\-0-9\)])\d*\s*\)"] = 993,
+                    [@"\(default\s+\-?\d*([^\-0-9\)])\d*\s*\)(\s*\(range[^\)]*\))?\s*\s*\(type\s*INTEGER\)"] = 993,
+                    [@"\(range\s+\-?\d*([^\-0-9])\d*\s+[^\)]*\)(\s*\(default[^\)]*\))?\s*\(type\s*INTEGER\)"] = 994,
+                    [@"\(type\s*INTEGER\)(\s*\(default[^\)]*\))?\s*\(range\s+\-?\d*([^\-0-9])\d*\s+[^\)]*\)"] = 994,
+                    [@"\(type\s*INTEGER\)(\s*\(default[^\)]*\))?\s*\(range\s+\-?\d+\s+\-?\d*([^\-0-9\)])\d*\s*\)"] = 995,
+                    [@"\(range\s+\-?\d+\s+\-?\d*([^\-0-9\)])\d*\s*\)(\s*\(default[^\)]*\))?\s*\s*\(type\s*INTEGER\)"] = 995,
+                };
+
+                // For each variable in the LHS of the rule:
+                // 1. highlight positevely all matching variables with slightly different colors.
+                // 2. highlight as error unmached variables
+                //foreach (Match m in new Regex(@"\(defrule (.|\n|\r)*\?(?<!\w)([a-z-]+)(?!\w)(.|\n|\r)*=>").Matches(text))
+                // {
+
+                // }
+
+                Debug.Assert(!codingStandardSpecial.Values.Distinct().ToList().Any(ruleNumber => !codingStandardRules.Keys.Contains(ruleNumber)), $"The rule number { string.Join(", ", codingStandardSpecial.Values.Distinct().ToList().Select(ruleNumber => !codingStandardRules.Keys.Contains(ruleNumber))) } is not defined in codingStandardRules.");
+
+                foreach (var special in codingStandardSpecial.Keys)
+                {
+                    Regex SpecialRegex = new Regex(special);
+                    foreach (Match m in SpecialRegex.Matches(text))
+                    {
+                        highlights.Add(new HighlightItem(m.Index, m.Index + m.Length - 1, "ERROR", codingStandardRules[codingStandardSpecial[special]]));
+                    }
+                }
+
+                var commentsPresent = new Dictionary<string, int>
+                {
+                    ["Slots below are internal only"] = 6,
+                    ["1 instance"] = 7,
+                    [@"at most \d? (new )?instances( per (hour|minute|second))?"] = 7,
+                    ["unique"] = 8,
+                };
+                Debug.Assert(!commentsPresent.Values.Distinct().ToList().Any(ruleNumber => !codingStandardRules.Keys.Contains(ruleNumber)), $"The rule number { string.Join(", ", commentsPresent.Values.Distinct().ToList().Select(ruleNumber => !codingStandardRules.Keys.Contains(ruleNumber))) } is not defined in codingStandardRules.");
+
+                foreach (var comment in commentsPresent.Keys)
+                {
+                    foreach (Match m in new Regex(@";.*\s*" + comment, RegexOptions.IgnoreCase).Matches(text))
+                    {
+                        highlights.Add(new HighlightItem(m.Index, m.Index + m.Length - 1, "HEROCOMMENT", codingStandardRules[commentsPresent[comment]]));
+                    }
+                }
+            }
+
+            highlights.Sort((a, b) => a.start - b.start);
+
+            for(int i = 1; i < highlights.Count; i++)
+            {
+                if(highlights[i].start <= highlights[i - 1].end)
+                {
+                    throw new Exception("Cannot have overlap highlights regions!");
+                }
+            }
+
+            return highlights;
+        }
+
         /// <summary>
         /// Method checks the reqirement analysis and based on the results it coloures
         /// the specific rows.
@@ -2090,32 +3054,36 @@ namespace InterLayerLib
                     rMetadata.flags[rowIndex].Add(VerificationTableCellFlag.None);
                 }
             }
-
+            string cell;
             for (int rowIndex = 0; rowIndex < dataTable.Rows.Count; rowIndex++)
             {
                 for (int columnIndex = 2; columnIndex < dataTable.Columns.Count - 1; columnIndex++)
                 {
                     if (dataTable.Rows[rowIndex].ItemArray.Length > columnIndex && dataTable.Rows[rowIndex][columnIndex] != null)
                     {
-                        if (dataTable.Rows[rowIndex][columnIndex].ToString().Contains("All requirements have been proven logically consistent.") ||
-                            dataTable.Rows[rowIndex][columnIndex].ToString().Contains("There is no redundancy in the requirements.") ||
-                            dataTable.Rows[rowIndex][columnIndex].ToString().Contains("The requirements are realisable.") ||
-                            dataTable.Rows[rowIndex][columnIndex].ToString().Contains("No inconsistency or unrealisability detected") ||
-                            dataTable.Rows[rowIndex][columnIndex].ToString().Contains("All requirements are satified by the system."))
+                        cell = dataTable.Rows[rowIndex][columnIndex].ToString();
+                        if (cell.Contains("All requirements have been proven logically consistent.") ||
+                            cell.Contains("There is no redundancy in the requirements.") ||
+                            cell.Contains("The requirements are realisable.") ||
+                            cell.Contains("No inconsistency or unrealisability detected") ||
+                            cell.Contains("All requirements are satified by the system."))
                         {
                             rMetadata.flags[rowIndex][columnIndex] |= VerificationTableCellFlag.NoDefectAnalysis;
                             requirementSemanticAnalysisPerfect++;
                         }
-                        if (dataTable.Rows[rowIndex][columnIndex].ToString().Contains("The following requirements are redundant") ||
-                            dataTable.Rows[rowIndex][columnIndex].ToString().Contains("The requirements are inconsistent") ||
-                            dataTable.Rows[rowIndex][columnIndex].ToString().Contains("The requirements are not realisable.") ||
-                            dataTable.Rows[rowIndex][columnIndex].ToString().Contains("onflict occurs") ||
-                            dataTable.Rows[rowIndex][columnIndex].ToString().StartsWith("Error") ||
-                            dataTable.Rows[rowIndex][columnIndex].ToString().Contains("trivially"))
+                        if (cell.Contains("The following requirements are redundant") ||
+                            cell.Contains("The requirements are inconsistent") ||
+                            cell.Contains("The requirements are not realisable.") ||
+                            cell.Contains("cannot be fired.") ||
+                            cell.Contains("onflict occurs") ||
+                            cell.StartsWith("Error") ||
+                            cell.Contains("trivially"))
                         {
                             rMetadata.flags[rowIndex][columnIndex] |= VerificationTableCellFlag.DefectAnalysis;
 
-                            if (dataTable.Rows[rowIndex][columnIndex].ToString().Contains("The requirements are not realisable.") || dataTable.Rows[rowIndex][columnIndex].ToString().Contains("onflict occurs"))
+                            if (cell.Contains("The requirements are not realisable.") 
+                                || cell.Contains("cannot be fired.")
+                                || cell.Contains("onflict occurs"))
                             {
                                 string data = dataTableDetails.Rows[rowIndex][columnIndex].ToString();
                                 var matchesOK = Regex.Matches(data, @"A realisable subsets consists the following requirement indices:( [0-9]+)+");
@@ -2127,7 +3095,7 @@ namespace InterLayerLib
                                         if (int.TryParse(s, out realisableReq))
                                             realisableHashSetIndices.Add(realisableReq);
                                     if (realisableHashSetIndices.Count > 0 && dataTable.Rows.Count > realisableHashSetIndices.Max() + ANALYSIS_COUNT &&
-                                           !dataTable.Rows[rowIndex][columnIndex].ToString().Contains("The realisable requirements are highlighted by green background."))
+                                           !cell.Contains("The realisable requirements are highlighted by green background."))
                                         dataTable.Rows[rowIndex][columnIndex] = dataTable.Rows[rowIndex][columnIndex] + Environment.NewLine + "The realisable requirements are highlighted by green background.";
                                 }
                                 var matchesBAD = Regex.Matches(data, @"[vV]iolating requirements? i(s|ndex|ndices):( [0-9]+)+");
@@ -2150,12 +3118,12 @@ namespace InterLayerLib
                                         // extend the information about violating requirements with this information.
                                         string nonEmptyRealisableSetSentence = ", which make the set unimplementable when added,";
                                         if (matchesOK.Count == 0) nonEmptyRealisableSetSentence = "";
-                                        string aViolatingInfo = "Violating requirements" + nonEmptyRealisableSetSentence + " are highlighted by red background.";
-                                        if (!dataTable.Rows[rowIndex][columnIndex].ToString().Contains("Violating requirements") &&
-                                            !dataTable.Rows[rowIndex][columnIndex].ToString().Contains("Unfireable requirement"))
-                                            dataTable.Rows[rowIndex][columnIndex] = dataTable.Rows[rowIndex][columnIndex] + Environment.NewLine +
-                                                (this.systemModel.reqs.isPrioritized() ?
-                                                aViolatingInfo.Replace("Violating", "Unfireable") : aViolatingInfo);      
+                                        string aViolatingInfo = $"Violating requirements{ nonEmptyRealisableSetSentence } are highlighted by red background.";
+                                        if (!cell.Contains("Violating requirements") && !cell.Contains("Unfireable requirement"))
+                                        {
+                                            cell = $"{ cell }{ Environment.NewLine }{ (this.systemModel.reqs.isPrioritized() ? aViolatingInfo.Replace("Violating", "Unfireable") : aViolatingInfo) }";
+                                            dataTable.Rows[rowIndex][columnIndex] = cell;
+                                        }
                                     }
                                 }
                                 var matchesRedundant = Regex.Matches(data, @"These are the vacuous requirements: ([0-9]+)");
@@ -2169,7 +3137,7 @@ namespace InterLayerLib
                                         // When there is non empty set of requirements that is realisable and the violating one makes this set unrealisable when added,
                                         // extend the information about violating requirements with this information.
                                         string redundantInfo = "The redundant requirement is highlighted by orange background.";
-                                        if (!dataTable.Rows[rowIndex][columnIndex].ToString().Contains("The redundant requirement is highlighted by orange background."))
+                                        if (!cell.Contains("The redundant requirement is highlighted by orange background."))
                                         {
                                             dataTable.Rows[rowIndex][columnIndex] = Regex.Replace((dataTable.Rows[rowIndex][columnIndex] + Environment.NewLine + redundantInfo).ToString(), @"The following requirements are redundant: ([0-9]+)[\n\r]+", "");
                                         }
@@ -2186,9 +3154,10 @@ namespace InterLayerLib
                                         // When there is non empty set of requirements that is realisable and the violating one makes this set unrealisable when added,
                                         // extend the information about violating requirements with this information.
                                         string aViolatingInfo = "The root cause is highlighted by violet background.";
-                                        if (!dataTable.Rows[rowIndex][columnIndex].ToString().Contains("The root cause is highlighted by violet background."))
+                                        if (!cell.Contains("The root cause is highlighted by violet background."))
                                         {
-                                            dataTable.Rows[rowIndex][columnIndex] = Regex.Replace((dataTable.Rows[rowIndex][columnIndex] + Environment.NewLine + aViolatingInfo).ToString(), @"Root cause is the requirement with index: ([0-9]+)[\n\r]+", "");
+                                            cell = Regex.Replace($"{ dataTable.Rows[rowIndex][columnIndex] }{ Environment.NewLine }{ aViolatingInfo }", @"Root cause is the requirement with index: ([0-9]+)[\n\r]+", "");
+                                            dataTable.Rows[rowIndex][columnIndex] = cell;
                                         }
                                     }
                                 }
@@ -2217,24 +3186,23 @@ namespace InterLayerLib
                                     if (ci <= 1)
                                         rMetadata.flags[rowIndex][ci] |= VerificationTableCellFlag.Redundant;
                         }
-                        else
-                            if (columnIndex > 2)
+                        else if (columnIndex > 2)
                         {
                             rMetadata.flags[rowIndex][columnIndex] |= VerificationTableCellFlag.Neutral;
-                            if (dataTable.Rows[rowIndex][columnIndex].ToString().StartsWith("Yes*") ||
-                                dataTable.Rows[rowIndex][columnIndex].ToString().StartsWith("Yes (within") ||
-                                dataTable.Rows[rowIndex][columnIndex].ToString().Contains("(unsound)"))
+                            if (cell.StartsWith("Yes*") ||
+                                cell.StartsWith("Yes (within") ||
+                                cell.Contains("(unsound)"))
                                 rMetadata.flags[rowIndex][columnIndex] |= VerificationTableCellFlag.NoDefectLimited;
                             // When verification result from a model checker is Yes
                             // or when vacuity checking is from 0/n to n/n make it green
-                            else if (dataTable.Rows[rowIndex][columnIndex].ToString().StartsWith("Y")
+                            else if (cell.StartsWith("Y")
                                 || (columnIndex == 5 && dataTable.Rows[rowIndex][5].ToString().Contains("/") && !(dataTable.Rows[rowIndex][5].ToString().Contains("["))))
                                 rMetadata.flags[rowIndex][columnIndex] |= VerificationTableCellFlag.NoDefect;
-                            else if (dataTable.Rows[rowIndex][columnIndex].ToString().StartsWith("N")
-                                        || dataTable.Rows[rowIndex][columnIndex].ToString().ToUpper() == dataTable.Rows[rowIndex][columnIndex].ToString() // LLVM safety error
-                                        || dataTable.Rows[rowIndex][columnIndex].ToString().StartsWith("Error") // error in formalization or translation
-                                        || dataTable.Rows[rowIndex][columnIndex].ToString().EndsWith(" error") // error in LLVM verification
-                                        || dataTable.Rows[rowIndex][columnIndex].ToString().EndsWith("]") // property does not HOLD in LLVM verification
+                            else if (cell.StartsWith("N")
+                                        || cell.ToUpper() == cell // LLVM safety error
+                                        || cell.StartsWith("Error") // error in formalization or translation
+                                        || cell.EndsWith(" error") // error in LLVM verification
+                                        || cell.EndsWith("]") // property does not HOLD in LLVM verification
                                         || (columnIndex == 5 && dataTable.Rows[rowIndex][5].ToString().Contains("vacuously")))
                                 rMetadata.flags[rowIndex][columnIndex] |= VerificationTableCellFlag.Defect;
 

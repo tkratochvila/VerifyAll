@@ -9,9 +9,9 @@ namespace InterLayerLib
 {
     public class CheckerNewTestCases : CheckerMessage
     {
-        public List<string> testCases { get; }
+        public List<InfoFile> testCases { get; }
 
-        public CheckerNewTestCases(List<string>  testCases)
+        public CheckerNewTestCases(List<InfoFile> testCases)
         {
             this._type = CheckerMessageType.newTestCases;
             this.testCases = testCases;

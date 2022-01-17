@@ -11,22 +11,22 @@ namespace webApp
 {
     public class FileUploadController : ApiController
     {
-        // GET api/<controller>
-        public IEnumerable<string> Get()
-        {
-            return new string[] { "value1", "value2" };
-        }
+        //// GET api/<controller>
+        //public IEnumerable<string> Get()
+        //{
+        //    return new string[] { "value1", "value2" };
+        //}
 
-        // GET api/<controller>/5
-        public string Get(int id)
-        {
-            return "value";
-        }
+        //// GET api/<controller>/5
+        //public string Get(int id)
+        //{
+        //    return "value";
+        //}
 
         public async Task<HttpResponseMessage> PostFile()
         {
-            var test = HttpContext.Current.Request.Params["fileUploadInfo"];
-            UploadFileRequestInfoJson uploadInfo = JsonSerializer.Deserialize<UploadFileRequestInfoJson>(test);
+            var parameters = HttpContext.Current.Request.Params["fileUploadInfo"];
+            UploadFileRequestInfoJson uploadInfo = JsonSerializer.Deserialize<UploadFileRequestInfoJson>(parameters);
 
 
             HttpRequestMessage request = this.Request;
@@ -52,13 +52,13 @@ namespace webApp
                 foreach (var file in provider.FileData)
                 {
                     var sourcePath = Path.GetFileName(file.LocalFileName);
-                    destinationPath = uploadInfo.fileNames[idx];
+                    destinationPath = Path.Combine(uploadInfo.session, uploadInfo.fileNames[idx]);
                     if (File.Exists(destinationPath))
                     {
                         File.Delete(destinationPath);
                     }
                     File.Move(sourcePath, destinationPath);
-                    fileNames.Add(destinationPath);
+                    fileNames.Add(uploadInfo.fileNames[idx]);
                     idx++;
                 }
 
@@ -72,15 +72,15 @@ namespace webApp
             }
         }
 
-        // PUT api/<controller>/5
-        public void Put(int id, [FromBody] string value)
-        {
+        //// PUT api/<controller>/5
+        //public void Put(int id, [FromBody] string value)
+        //{
 
-        }
+        //}
 
-        // DELETE api/<controller>/5
-        public void Delete(int id)
-        {
-        }
+        //// DELETE api/<controller>/5
+        //public void Delete(int id)
+        //{
+        //}
     }
 }

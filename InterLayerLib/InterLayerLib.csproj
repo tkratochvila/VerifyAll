@@ -21,7 +21,7 @@
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
     <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>TRACE;DEBUG;HIERARCHICAL PETRI_CONCATENATION</DefineConstants>
+    <DefineConstants>TRACE;DEBUG;HIERARCHICAL PETRI_HIERARCHICAL</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
@@ -36,6 +36,9 @@
   <ItemGroup>
     <Reference Include="Antlr4.Runtime">
       <HintPath>..\packages\Antlr4.Runtime.4.6.6\lib\net45\Antlr4.Runtime.dll</HintPath>
+    </Reference>
+    <Reference Include="Newtonsoft.Json, Version=12.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <HintPath>..\packages\Newtonsoft.Json.12.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -55,20 +58,23 @@
     <Compile Include="AutomationServer.cs" />
     <Compile Include="AutomationServerBag.cs" />
     <Compile Include="Checker.cs" />
+    <Compile Include="CheckerDiskItem.cs" />
     <Compile Include="CheckerErrorMessage.cs" />
     <Compile Include="CheckerMessage.cs" />
     <Compile Include="CheckerNewTestCases.cs" />
+    <Compile Include="CheckerNewTestCasesRequestFile.cs" />
     <Compile Include="CheckerNewVerificationResult.cs" />
+    <Compile Include="CheckerTestCasesStatus.cs" />
     <Compile Include="CheckerVerificationNotification.cs" />
     <Compile Include="CheckerWarningMessage.cs" />
+    <Compile Include="HighlightItem.cs" />
+    <Compile Include="InfoFile.cs" />
+    <Compile Include="InterLayerLibPath.cs" />
     <Compile Include="ResultsMetadata.cs" />
     <Compile Include="MachineReasoning.cs" />
     <Compile Include="ClientOSLC.cs" />
-    <Compile Include="CLIPSVisitor.cs" />
     <Compile Include="ErrorException.cs" />
-    <Compile Include="EARSVisitor.cs" />
     <Compile Include="Ltl.cs" />
-    <Compile Include="PETRIVisitor.cs" />
     <Compile Include="Properties\Settings.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
@@ -100,14 +106,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
-    <Antlr4 Include="EARS.g4">
-      <Generator>MSBuild:Compile</Generator>
-      <CustomToolNamespace>InterLayerLib</CustomToolNamespace>
-    </Antlr4>
-    <Antlr4 Include="CLIPS.g4">
-      <Generator>MSBuild:Compile</Generator>
-      <CustomToolNamespace>InterLayerLib</CustomToolNamespace>
-    </Antlr4>
     <None Include="packages.config" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>

@@ -1,6 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+//using System.Text;
+//using System.Threading.Tasks;
+//using System.Xml;
+//using System.Configuration;
 using System.Runtime.CompilerServices;
 using System.Diagnostics;
 using System.Windows.Forms;
@@ -66,7 +70,7 @@ namespace InterLayerLib
         /// Used to replace LTL structure by actual atomic propositions - have to be an unique string
         public static string uniqueString = "r1La9+5yo3a-59fa5mX9zdlLa5";
         public Dictionary<int, string> Structure { get; set; }   // For each requirement index as a key, value contains LTL structure. For example: "G (P -> Q)"
-        /// Stores the information about mismatches begtween ears file declared variables and variables contained in the model's used C file.
+        /// Stores the information about mismatches begtween EARS file declared variables and variables contained in the model's used C file.
         private string ltlIOFaultList;
 
         /// <summary>
@@ -317,11 +321,11 @@ namespace InterLayerLib
 
 
         /// <summary>
-        /// Recursively substitues bounded operators F[=≤]c, G[=<≤]c, with pure Linear Temporal Logic operators
+        /// Recursively substitues bounded operators F[=≤]c, G[=<≤]c, with pure Linear Temporal Logic operators (and, or, X) or pure SMT operators.
         /// </summary>
         /// <param name="formula">formula that could contain bounded operators</param>
-        /// <returns>semantically equivalent pure LTL formula</returns>
-        public string substitueBoundedOperators(string formula, List<List<string>> allsignalnames, int SignalNameIndex, SystemModel sm)
+        /// <returns>semantically equivalent pure LTL/SMT formula</returns>
+        public string substitueBoundedOperators(string formula, bool LTL, List<List<string>> allsignalnames, int SignalNameIndex, SystemModel sm)
         {
             string number, number_minus_1;
             string prevFormula;
@@ -339,7 +343,8 @@ namespace InterLayerLib
                 else
                 {
                     string error = "Formula shall contain parentheses after: [FG][=<≤][0-9]+\\s*" + Environment.NewLine + formula;
-                    MessageBox.Show(error, "Matched substring: " + r.Match(formula));
+                    if (LTL) // Show error just once (only for LTL)
+                        MessageBox.Show(error, "Matched substring: " + r.Match(formula));
                     return "Error: " + error;
                 }
             }
@@ -359,13 +364,13 @@ namespace InterLayerLib
                 prevFormula = formula;
                 number = Regex.Match(formula, @"F[=≤]([0-9]+)").Groups[1].ToString();
                 Debug.Assert(ToolKit.IsNumeric(number), "Error in LTL formula." + Environment.NewLine + "Expected number after \"F[=≤]\"." + Environment.NewLine + "Got " + number + " instead.");
-                formula = Regex.Replace(formula, @"F[=≤]0\s*" + balancedParentheses, "$1");
+                formula = Regex.Replace(formula, @"F[=≤]0\s*" + balancedParentheses, (LTL ? "$1" : "($1)"));
                 if (ToolKit.IsNumeric(number))
                 {
                     number_minus_1 = (System.Convert.ToInt32(number) - 1).ToString();
                     formula = Regex.Replace(formula, @"F[=]" + number + @"\s*" + balancedParentheses, "X F=" + number_minus_1 + "($1)");
                     formula = Regex.Replace(formula, @"F[≤]" + number + @"\s*" + balancedParentheses,
-                        (beginning ? "(" : "") + "($1) || X(F≤" + number_minus_1 + "($1))" + (beginning ? ")" : ""));
+                        (LTL ? (beginning ? "(" : "") + "($1) || X(F≤" + number_minus_1 + "($1))" + (beginning ? ")" : "") : "or ($1) X(F≤" + number_minus_1 + "($1))"));
                 }
                 if (prevFormula == formula)
                     formula = Regex.Replace(formula, @"F([=≤])([0-9]+)", "Error: unable to streamline: F $1 $2.");
@@ -390,7 +395,7 @@ namespace InterLayerLib
                     number_minus_1 = (System.Convert.ToInt32(number) - 1).ToString();
                     //formula = Regex.Replace(formula, @"G<1\s*" + balancedParentheses, "($1)");
                     formula = Regex.Replace(formula, @"G≤" + number + @"\s*" + balancedParentheses,
-                        (beginning ? "(" : "") + "($1) && X(G≤" + number_minus_1 + "($1))" + (beginning ? ")" : ""));
+                        (LTL ? (beginning ? "(" : "") + "($1) && X(G≤" + number_minus_1 + "($1))" + (beginning ? ")" : "") : "and ($1) X(G≤" + number_minus_1 + "($1))"));
                 }
                 // the way how to generate variable number of Xs (XXXXXXX):
                 // new String('X', System.Convert.ToInt32(number)+ 1)
@@ -399,6 +404,66 @@ namespace InterLayerLib
                 beginning = false;
             }
 
+            // In case of SMT, replace all "X ( var )" with "xvar".
+            if (!LTL)
+            {
+                r = new Regex(@"([^a-zA-Z_0-9])X\s*" + balancedParentheses);
+                int remainingNumberOfX = Regex.Matches(formula, "X ").Count;
+                string replacement;
+                bool atLeastOneMatch = true;
+                MatchCollection matches;
+                while (atLeastOneMatch && remainingNumberOfX > 0)
+                {
+                    remainingNumberOfX--;
+                    try
+                    {
+                        matches = Regex.Matches(formula, @"([^a-zA-Z_0-9])X\s*" + 
+                            balancedParentheses, RegexOptions.None, TimeSpan.FromSeconds(1));
+                        atLeastOneMatch = matches.Count > 0 ? true : false;
+                    }
+                    catch (RegexMatchTimeoutException ex)
+                    {
+                        Debug.Fail($"The regular expression over SMT formula time outs, probably due to unbalanced parentheses.\n" + ex.Message);
+                        atLeastOneMatch = false;
+                        return formula;
+                    }
+                    replacement = "$1($2)";
+
+                    // in case the replacement is of a different length we replace from
+                    // from back to front to keep the match indices correct
+                    int matchLength;
+                    int formulaLength = formula.Length;
+                    string matchedString;
+                    foreach (var match in matches.Cast<Match>().Reverse())
+                    {
+                        matchLength = match.Length;
+                        matchedString = formula.Substring(match.Index, matchLength);
+                        foreach (var var in allsignalnames)
+                        {
+                            //formula = new Regex(var[SignalNameIndex]).Replace(formula, "x" + var[SignalNameIndex], matchLength, match.Index);
+                            formula = formula.Replace(var[SignalNameIndex], "x" + var[SignalNameIndex], match.Index, matchLength);
+                            if (formulaLength < formula.Length) // If the formula and therefore the match length extended, adjust matchLength accordingly
+                            {
+                                matchLength += formula.Length - formulaLength;
+                                formulaLength = formula.Length;
+                            }
+                        }
+                        // Make sure that also variables not covered by the interface requirements are replaced for both LTL and SMT, 
+                        foreach (var structvar in sm.reqs.RequirementVariableList[sm.reqs.requirementIndex].OrderBy(x => -x.name.Length))
+                        {
+                            string sn = SystemModel.safeName(structvar.name);
+                            formula = formula.Replace(sn, "x" + sn, match.Index, matchLength);
+                            if (formulaLength < formula.Length) // If the formula and therefore the match length extended, adjust matchLength accordingly
+                            {
+                                matchLength += formula.Length - formulaLength;
+                                formulaLength = formula.Length;
+                            }
+                        }
+                        formula = r.Replace(formula, replacement, 1, match.Index);
+                    }
+                }
+                Debug.Assert(Regex.Matches(formula, "X ").Count == 0, $"Error: The substitutions should have translated all X (var) from the formula. However, there are still {Regex.Matches(formula, "X ").Count} left.");
+            }
             return formula;
         }
 
@@ -420,6 +485,49 @@ namespace InterLayerLib
             return proposition;
         }
 
+        /// <summary>
+        /// Removes the the parentheses that are EARSly redundant.
+        /// For example from the string: "((a)&&((b)))" it is only safe to get "((a)&&(b))"
+        /// </summary>
+        /// <param name="s">input string</param>
+        /// <returns>same string s but without redundant parentheses</returns>
+        /// Test:
+        /*
+                    var results = string.Join("\n", new string[] { 
+                   "((a->b))->c",  
+                   "(a&&b)||c",
+                   "((a||b)**(c||d))",
+                   "(a->(((b||c)))->d)",
+                   "((a)&&((b)))",
+                   "((a->b))||c",
+                   "(((a->b))->c)",
+                   "b->((c)) ",
+                   "((a)&&(b))",
+                   "(((a)||(((b)))))",
+                    "(((a<->c)||(b)))",
+                   "(a &&(b))",
+                   "((a -> b || (b-> c)) || ((c)))" }
+                .Select(s => string.Format("{0} ->  " + ltl.removeRedundantParentheses(s), s)));
+            MessageBox.Show(results, "Removing redundant parentheses."); 
+        */
+        /// Results: 
+        /*
+         *  Bool () a -> Bool () a // in this case the parentheses should be kept for SMT 2 Library standard.
+            ( (a->(b)) )->c -> (a->(b)) ->c
+            ((a->b))->c ->  (a->b)->c
+            (a&&b)||c ->  (a&&b)||c
+            ((a||b)**(c||d)) ->  ((a||b)**(c||d))
+            (a->(((b||c)))->d) ->  (a->(b||c)->d)
+            ((a)&&((b))) ->  ((a)&&(b))
+            ((a->b))||c ->  (a->b)||c
+            (((a->b))->c) ->  ((a->b)->c)
+            b->((c))  ->  b->(c) 
+            ((a)&&(b)) ->  ((a)&&(b))
+            (((a)||(((b))))) ->  ((a)||(b))
+            (((a<->c)||(b))) ->  ((a<->c)||(b))
+            (a &&(b)) ->  (a &&(b))
+            ((a -> b || (b-> c)) || ((c))) ->  ((a -> b || (b-> c)) || (c))
+         */
         public string removeRedundantParentheses(string s)
         {
             var pmap = new Dictionary<int, bool>();
@@ -436,7 +544,7 @@ namespace InterLayerLib
                     {
                         if (!element.Value)
                             pmap.Remove(element.Key);
-                        else if (i>element.Key+1)
+                        else if (i>element.Key+1) // "()" should be kept for SMT 2 Library standard.
                         {
                             s = s.Remove(i, 1);
                             s = s.Remove(element.Key, 1);
@@ -766,6 +874,12 @@ namespace InterLayerLib
                         ModelNameAndSuffic + ".$1");
             }
             return formula;
+            // Replace the variables based on the interface requirements from Word or notes from EARS (//.input, ..)
+            /*int SignalNameIndex = sm.interfaceRequirement[InterfaceType].SignalNameIndex;
+            if (SignalNameIndex != -1)
+                foreach (var signal in sm.interfaceRequirement[InterfaceType].signals.Select(x => x[SignalNameIndex]).Distinct())
+                    formula = Regex.Replace(formula, @"\b(" + signal + @")\b",
+                        sm.formCVariableName(sm.modelName, Suffix) + ".$1");*/
         }
     } //class
 

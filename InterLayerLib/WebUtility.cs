@@ -14,6 +14,8 @@ using System.Windows;
 using System.Xml.XPath;
 using System.Text.RegularExpressions;
 using System.Security.Cryptography.X509Certificates;
+using System.IO.Compression;
+using System.Net.NetworkInformation;
 
 namespace InterLayerLib
 {
@@ -32,6 +34,7 @@ namespace InterLayerLib
         {
             name = n;
             port = 8080;        // proxygen server
+ //           port = 12080;        // proxygen server debug server
             LyoPort = 11080;    // Lyo OSLC adapter
             procName = "";
             LyoContext = "/adapter/";
@@ -60,19 +63,20 @@ namespace InterLayerLib
 
         public UniversalVeriFitAdapterAddress()
         {
-            name = "165.195.211.181"; //TODO
-            analysisPort = 8080;
-            compilationPort = 8081;
+            name = "165.195.211.181";
+            analysisPort = 18080;
+            compilationPort = 18081;
             analysisContext = "/analysis/";
             compilationContext = "/compilation/";
         }
+
         public string analysisToString()
         {
-            return analysisPrefix + name + ":" + analysisPort.ToString() + analysisContext;
+            return $"{ analysisPrefix }{ name }:{ analysisPort }{ analysisContext }";
         }
         public string compilationToString()
         {
-            return compilationPrefix + name + ":" + compilationPort.ToString() + compilationContext;
+            return $"{ compilationPrefix }{ name }:{ compilationPort }{ compilationContext }";
         }
     }
 
@@ -149,7 +153,7 @@ namespace InterLayerLib
                 response.Close();
             }
             catch { }
-            Trace("[EXIT] address=" + address + "\npostData=" + postData + "\n" + responseFromServer);
+            Trace($"[EXIT] address={ address }\npostData={ postData }\n{ responseFromServer }");
             return responseFromServer;
         }
 
@@ -161,7 +165,7 @@ namespace InterLayerLib
         /// <returns>response from the server</returns>
         public static string get(string address, int timeout = 0)
         {
-            Trace("address=" + address + ", timeout=" + timeout);
+            Trace($"address={ address }, timeout={ timeout }");
             WebRequest request = WebRequest.Create(address);
 
 
@@ -188,7 +192,7 @@ namespace InterLayerLib
                 string message = reader.ReadToEnd();
                 if (status != "OK")
                 {
-                    Trace(status + "\n" + message);
+                    Trace($"{ status }\n{ message }");
                 }
                 // Clean up the streams and the response.
                 reader.Close();
@@ -258,7 +262,7 @@ namespace InterLayerLib
         /// <changed>OV,2020-04-03</changed>
         private static HttpRequestMessage buildGetAutomationResultVerifyServerAdapterQuery(int taskId, string workspaceID)
         {
-            var request = new HttpRequestMessage(HttpMethod.Get, "services/serviceProviders/A0/resources/automationResults/" + taskId);
+            var request = new HttpRequestMessage(HttpMethod.Get, "services/resources/automationResults/" + taskId);
             request.Headers.Add("type", "result");
             request.Headers.Add("workspace", workspaceID);
             request.Headers.Add("id", taskId.ToString());
@@ -285,30 +289,30 @@ namespace InterLayerLib
         {
             // build the OSLC AutomationPlan post request
             var requestPlan = new HttpRequestMessage(HttpMethod.Post, "services/serviceProviders/A0/resources/createAutoPlan");
-            var autoPlan = new OSLCAutomationPlan();
-            autoPlan.tool = toolName;
-            autoPlan.callParameters = callParameters;
-            autoPlan.requirementDocument = requirementDocument;
-            autoPlan.systempath = systempath;
-            autoPlan.timesSpent = timeSpent;
+            var AutomationPlan = new OSLCAutomationPlan();
+            AutomationPlan.tool = toolName;
+            AutomationPlan.callParameters = callParameters;
+            AutomationPlan.requirementDocument = requirementDocument;
+            AutomationPlan.systempath = systempath;
+            AutomationPlan.timesSpent = timeSpent;
             string fileName = "plan-" + toolName + ".xml";
-            autoPlan.write(fileName);
-            requestPlan.Content = new StringContent(autoPlan.build(), Encoding.UTF8, "application/xml");
+            AutomationPlan.write(fileName);
+            requestPlan.Content = new StringContent(AutomationPlan.build(), Encoding.UTF8, "application/xml");
             requestPlan.Headers.Add("Accept", "application/rdf+xml");
 
             // build the OSLC AutomationRequest post request
             var requestRequest = new HttpRequestMessage(HttpMethod.Post, "services/serviceProviders/A0/resources/createAutoReq");
-            var autoRequest = new OSLCAutomationRequest();
-            autoRequest.tool = toolName;
-            autoRequest.timeout_s = timeout;
-            autoRequest.callParameters = callParameters;
-            autoRequest.inputFiles = inputFiles;
-            autoRequest.callSchemaSignature = callSchemaSignature;
-            autoRequest.requirementDocument = requirementDocument;
-            autoRequest.systempath = systempath;
+            var AutomationRequest = new OSLCAutomationRequest();
+            AutomationRequest.tool = toolName;
+            AutomationRequest.timeout_s = timeout;
+            AutomationRequest.callParameters = callParameters;
+            AutomationRequest.inputFiles = inputFiles;
+            AutomationRequest.callSchemaSignature = callSchemaSignature;
+            AutomationRequest.requirementDocument = requirementDocument;
+            AutomationRequest.systempath = systempath;
             fileName = "request-" + toolName + ".xml";
-            autoRequest.write(fileName);
-            requestRequest.Content = new StringContent(autoRequest.build(), Encoding.UTF8, "application/xml");
+            AutomationRequest.write(fileName);
+            requestRequest.Content = new StringContent(AutomationRequest.build(), Encoding.UTF8, "application/xml");
             requestRequest.Headers.Add("type", "verify");
             requestRequest.Headers.Add("workspace", workspaceID);
             requestRequest.Headers.Add("filename", fileName);
@@ -361,7 +365,7 @@ namespace InterLayerLib
         /// <returns></returns>
         private static string waitedQuery(string address, HttpRequestMessage httpMsg)
         {
-            Task < Tuple<string, HttpStatusCode> > task  = queryServer(address, httpMsg, 0);
+            Task<Tuple<string, HttpStatusCode>> task = queryServer(address, httpMsg, 0);
             if (!task.IsCompleted)
                 task.Wait();
 
@@ -433,7 +437,7 @@ namespace InterLayerLib
                     System.Threading.Thread.Sleep(1000);
                     timeout -= 1000;
                 }
-                 
+
                 string response = await sendTask.Result.Content.ReadAsStringAsync();
                 return new Tuple<string, HttpStatusCode>(response, sendTask.Result.StatusCode);
             }
@@ -462,21 +466,21 @@ namespace InterLayerLib
             FileStream fs = File.OpenRead(fileName);
             var streamContent = new StreamContent(fs);
             streamContent.Headers.Add("Content-Type", "text/x-c");
-            streamContent.Headers.Add("Content-Disposition", "form-data; name=\"file\"; filename=\"" + Path.GetFileName(fileName) + "\"");
+            streamContent.Headers.Add("Content-Disposition", $"form-data; name=\"file\"; filename=\"{ Path.GetFileName(fileName) }\"");
             content.Add(streamContent, "file", Path.GetFileName(fileName));
             request.Content = content;
 
-            ToolKit.Trace("Sending file: " + fileName);
+            ToolKit.Trace($"Sending file: { fileName }");
 
             string fileId = "";
             try
             {
-                string response = WebUtility.waitedQuery("http://" + sa.name + ":" + sa.port, request);
+                string response = WebUtility.waitedQuery($"http://{ sa.name }:{ sa.port }", request);
                 if (response.ToLower().Contains("error"))
                     throw new Exception(response);
                 fileId = response.Substring(response.IndexOf(" id:") + 4);
             }
-            catch (Exception e)
+            catch
             {
                 /*TODO UNDO
                 ToolKit.Trace(e.Message);
@@ -525,7 +529,7 @@ namespace InterLayerLib
             }
             catch (Exception e)
             {
-                //TODO UNDO MessageBox.Show(e.Message, "Unable to copy the generated files to the server.");
+                ToolKit.Trace($"Unable to copy the generated files to the server.\n{ e.Message }");
                 return false;
             }
         }
@@ -663,23 +667,23 @@ namespace InterLayerLib
             ServerAddress serverAddress = new ServerAddress(serverName);
 
             /* TODO a temporary way of getting results form the adapter.
-             * The monitoring result has to be replaced in the monitorQuery by the adapterAutoResult
+             * The monitoring result has to be replaced in the monitorQuery by the adapterAutomationResult
              */
-            String adapterAutoResult = WebUtility.getAutomationResultFromVerifyServerAdapter(serverName, workspaceID, time, tpid);                                 // get the automation result from the adapter
-            String monitorQuery = WebUtility.waitedQuery(serverAddress.ToString(), WebUtility.buildMonitorQuery(tpid, workspaceID));        // get the monitor query form the verify server (also contains the same AutoResult)
+            String adapterAutomationResult = WebUtility.getAutomationResultFromVerifyServerAdapter(serverName, workspaceID, time, tpid);                                 // get the automation result from the adapter
+            String monitorQuery = WebUtility.waitedQuery(serverAddress.ToString(), WebUtility.buildMonitorQuery(tpid, workspaceID));        // get the monitor query form the verify server (also contains the same AutomationResult)
 
             int posQueryAutoResStart = monitorQuery.IndexOf("<oslc_auto:AutomationResult");
             if (posQueryAutoResStart >= 0)
             {
                 int posQueryAutoResEnd = monitorQuery.IndexOf("</oslc_auto:AutomationResult>") + "</oslc_auto:AutomationResult>".Length;
                 string noAutoResQuery = monitorQuery.Remove(posQueryAutoResStart, posQueryAutoResEnd - posQueryAutoResStart);                   // remove the old automation result from the monitor query
-                int posAdapterAutoResStart = adapterAutoResult.IndexOf("<oslc_auto:AutomationResult");
-                int posAdapterAutoResEnd = adapterAutoResult.IndexOf("</oslc_auto:AutomationResult>") + "</oslc_auto:AutomationResult>".Length;
+                int posAdapterAutoResStart = adapterAutomationResult.IndexOf("<oslc_auto:AutomationResult");
+                int posAdapterAutoResEnd = adapterAutomationResult.IndexOf("</oslc_auto:AutomationResult>") + "</oslc_auto:AutomationResult>".Length;
                 if (posAdapterAutoResStart >= 0)
                 {
                     // extract the automation result from the adapters response (cut off <RDF> .... etc)
                     monitorQuery = noAutoResQuery.Insert(posQueryAutoResStart,
-                        adapterAutoResult.Remove(posAdapterAutoResEnd + 1).Remove(0, posAdapterAutoResStart - 1));
+                        adapterAutomationResult.Remove(posAdapterAutoResEnd + 1).Remove(0, posAdapterAutoResStart - 1));
                 }
             }
             return monitorQuery;
@@ -715,35 +719,17 @@ namespace InterLayerLib
                                                                    workspace.workspaceID);
 
             // Send the AutomationPlan
-            String autoPlanResponse = WebUtility.waitedQuery(serverAddress.LyoToString(), query.ElementAt(0));
-            if (autoPlanResponse.Equals("Query failed.")) // error form the .waitedQuery()
-            {
-                // TODO handle request fail (e.g. adapter ureachable)
-                throw new Exception("AutomationPlan POST failed - error in client waitedQuery (the adapter is most likely down)\nError msg: " + autoPlanResponse);
-            }
-            else if (autoPlanResponse.Contains("failed") || autoPlanResponse.Contains("oslc:Error"))
-            {
-                // TODO handle request fail (e.g. verification failed, or invalid OSLC resource)
-                throw new Exception("AutomationPlan POST failed - error from the adapter (oslc error or Veify Server result was fail)\nError msg: " + autoPlanResponse);
-            }
+            String AutomationPlanResponse = WebUtility.waitedQuery(serverAddress.LyoToString(), query.ElementAt(0));
+            ThrowExceptionIfFailed(AutomationPlanResponse, "Automation Plan", serverAddress.LyoToString());
 
             // Send the AutomationRequest
-            String autoRequestResponse = WebUtility.waitedQuery(serverAddress.LyoToString(), query.ElementAt(1));
-            if (autoRequestResponse.Equals("Query failed.")) // error form the .waitedQuery()
-            {
-                // TODO handle request fail (e.g. verification failed, or invalid OSLC resource)
-                throw new Exception("AutomationRequest POST failed - error in client waitedQuery (the adapter is most likely down)\nError msg: " + autoRequestResponse);
-            }
-            else if (autoRequestResponse.Contains("failed") || autoRequestResponse.Contains("oslc:Error") || autoRequestResponse.Trim() == "")
-            {
-                // TODO handle request fail
-                throw new Exception("AutomationRequest POST failed\n - error from the adapter (oslc error or Verify Server result was fail or empty response)\nError msg: " + autoRequestResponse);
-            }
+            String AutomationRequestResponse = WebUtility.waitedQuery(serverAddress.LyoToString(), query.ElementAt(1));
+            ThrowExceptionIfFailed(AutomationRequestResponse, "Automation Request", serverAddress.LyoToString());
 
             // extract the VerifyServer response from the returned AutomationRequest
             string result = "";
             XmlDocument responseXML = new XmlDocument();
-            responseXML.LoadXml(autoRequestResponse);
+            responseXML.LoadXml(AutomationRequestResponse);
             XmlNodeList childNodes = responseXML.GetElementsByTagName("oslc_auto:AutomationRequest")[0].ChildNodes;
             foreach (XmlNode child in childNodes)
             {
@@ -755,6 +741,190 @@ namespace InterLayerLib
             }
             return result;
         }
+
+        public static void ThrowExceptionIfFailed(string Response, string messageType, string serverAddress)
+        {
+            if (Response.Equals("Query failed.") || Response.Contains("failed") || Response.Contains("oslc:Error") || Response.Trim() == "")
+            {
+                // TODO handle request fail (e.g. adapter ureachable)
+                // TODO handle request fail (e.g. verification failed, or invalid OSLC resource)
+                throw new Exception($"Response to { messageType } from server { serverAddress } failed.\n{ (Response.Equals("Query failed.") ? "Verification Server is most likely down." : (Response.Trim() == "") ? "" : "OSLC error or Verification Server Result failed") }\nResponse is: { Response }");
+            }
+        }
+
+        public delegate void HiliteVerificationEvent(string status);
+
+        /// <summary>
+        /// Performs verification for the Hilite tool by calling the Universal Verifit Adapter that provides Hilite functionality.
+        /// Will block until the analysis is finished.
+        /// Interface of this function could be modified if the current usage is not ideal. For example the input can be a URL
+        /// to download the input file from, or the output can be a URL to download the result from.
+        /// </summary>
+        /// <param name="inputFilePath">Path to a Hilite input ZIP file</param>
+        /// <returns>InfoFile containing HiLiTE result (ZIP file name) and info about it.</returns>
+        static public Task<InfoFile> runHiliteVerification(bool Text2Test, String inputFilePath, HiliteVerificationEvent hve = null, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            List<string> serverAddresses = new List<string>{ "165.195.11.181", "10.178.243.56" };
+            if (serverAddresses.All(a => new Ping().Send(a).Status != IPStatus.Success))
+                throw new Exception($"All verification servers ({string.Join(", ", serverAddresses)}) are unreachable by ping.\n Please connect to the Honeywell Network.");
+            
+            var serverAddress = new UniversalVeriFitAdapterAddress();
+
+            // get the input file (Hilite zip)
+            byte[] inputFileBytes = File.ReadAllBytes(inputFilePath);
+            string base64ZIP = Convert.ToBase64String(inputFileBytes);
+            string filename = Path.GetFileName(inputFilePath);
+
+            // build and send the OSLC AutomationRequest XML for SUT transfer (compilation adapter) - transfers the Hilite zip to the server
+            Dictionary<string, string> compilationInputParameters = new Dictionary<string, string>();   // name:value
+            compilationInputParameters.Add("sourceBase64", $"{ filename }\n{ base64ZIP }"); // the current format is "unencoded_name\nbase64_encoded_file"
+            compilationInputParameters.Add("unpackZip", "true");
+            compilationInputParameters.Add("compile", "false");
+            using (ZipArchive archive = ZipFile.OpenRead(inputFilePath))
+            {
+                compilationInputParameters.Add("launchCommand", // TODO might get moved into an inputParameter of the analysis maybe
+                    archive.Entries.FirstOrDefault(e => e.FullName.EndsWith(".hilite", StringComparison.OrdinalIgnoreCase)).Name);
+            }
+
+            var compilationAutomationRequestXml = new OSLCAutomationRequestVeriFIT(
+                    "HiLiTE", "HiLiTE", "HiLiTE",
+                    serverAddress.compilationToString() + "services/resources/automationPlans/0",
+                    compilationInputParameters
+                    );
+
+            XmlDocument compilationAutomationResult = ClientOSLC.UniversalVeriFitAdapter_SendAutomationRequestAndGetAutomationResult(compilationAutomationRequestXml.build(), serverAddress.compilationToString() + "services/resources/createAutomationRequest", (string status) => { hve(status); }, cancellationToken);
+
+            int serverIndex = 0;
+            while (compilationAutomationResult == null && serverIndex + 1 < serverAddresses.Count) // try different server
+            {   // TODO filter out servers that do not correspond to the licence or locality                
+                serverAddress.name = serverAddresses[serverIndex + 1];
+                compilationAutomationRequestXml.executesAutomationPlan =
+                    compilationAutomationRequestXml.executesAutomationPlan.Replace(serverAddresses[serverIndex], serverAddresses[serverIndex + 1]);
+                compilationAutomationResult = ClientOSLC.UniversalVeriFitAdapter_SendAutomationRequestAndGetAutomationResult(compilationAutomationRequestXml.build(), serverAddress.compilationToString() + "services/resources/createAutomationRequest", (string status) => { hve(status); }, cancellationToken);
+                serverIndex++;
+            }
+            if (compilationAutomationResult == null)
+                throw new Exception($"Verification servers ({string.Join(", ", serverAddresses)}) did not return any Automation Results");
+            
+            // extract the createdSUT resrouce from the AutomationResult
+            string createdSUT = "";
+            var childNodes = compilationAutomationResult.GetElementsByTagName("oslc_auto:AutomationResult")[0].ChildNodes;
+            foreach (XmlNode child in childNodes)
+            {
+                if (child.Name == "fit:createdSUT")
+                {
+                    createdSUT = child.Attributes["rdf:resource"].Value;
+                    break;
+                }
+            }
+            if (createdSUT == "")
+                throw new Exception("UniversalVeriFitAdapter: The compilation Automation Result is missing a createdSUT property.");
+
+
+            // now build and send the OSLC AutomationRequest XML for analysis execution (analysis adapter) - executes Hilite on the SUT created by the last request
+            Dictionary<string, string> analysisInputParameters = new Dictionary<string, string>();   //  name:value
+            analysisInputParameters.Add("SUT", createdSUT);
+            analysisInputParameters.Add("zipOutputs", "true");
+            analysisInputParameters.Add("envVariable",  //variable_name\nvariable_value
+                $"HILITE_HOME\nc:\\Dev\\Software\\{ (Text2Test ? "Text2Test" : "HiLiTE") }"); 
+            analysisInputParameters.Add("outputFileRegex", ".*");
+            var analysisAutomationRequestXml = new OSLCAutomationRequestVeriFIT(
+                    Text2Test ? "Text2Test" : "HiLiTE",
+                    Text2Test ? "Text2Test" : "HiLiTE",
+                    "Honeywell",
+                    $"{ serverAddress.analysisToString() }services/resources/automationPlans/{ (Text2Test ? "Text2Test" : "hilite") }",
+                    analysisInputParameters
+                    );
+
+            XmlDocument analysisAutomationResult = ClientOSLC.UniversalVeriFitAdapter_SendAutomationRequestAndGetAutomationResult(analysisAutomationRequestXml.build(), serverAddress.analysisToString() + "services/resources/createAutomationRequest", (string status) => { hve(status); }, cancellationToken);
+
+            // extract the ZIP Contribution URI from the Automation Result
+            var contributions = analysisAutomationResult.GetElementsByTagName("oslc_auto:Contribution");
+            string resultZipUri = "";
+            bool found = false;
+            foreach (XmlNode contrib in contributions)  // find the zip contribution
+            {
+                resultZipUri = contrib.Attributes["rdf:about"].Value;
+                foreach (XmlNode child in contrib.ChildNodes)
+                {
+                    if (child.Name.Equals("dcterms:title") && (child.InnerXml.Contains(".zip")))
+                    {
+                        found = true;
+                    }
+                }
+
+                if (found)
+                    break;
+            }
+            if (resultZipUri == "" || !found)
+                throw new Exception("UniversalVeriFitAdapter: The analysis Automation Result is missing a zip file contribution.");
+
+            string resultsFileName = Path.ChangeExtension(inputFilePath, "results.zip");
+            string infoText;
+
+            // download the result .zip file
+            using (var webClient = new WebClient())
+            {
+                webClient.Headers.Add(HttpRequestHeader.Accept, "application/octet-stream");
+                webClient.DownloadFile(resultZipUri, resultsFileName);
+
+                infoText = retrieveCoverage(resultsFileName);
+            }
+
+            Task<InfoFile> newTask = new Task<InfoFile>(() => new InfoFile(resultsFileName, infoText));
+            newTask.Start();
+
+            return newTask;
+        }
+
+        static public string retrieveCoverage(string resultsFileName)
+        {
+            string infoText = "";
+            using (ZipArchive archive = ZipFile.OpenRead(resultsFileName))
+            {
+                var infoEntry = archive.Entries.FirstOrDefault(e => e.FullName.EndsWith("_ReqCoverage.xml", StringComparison.OrdinalIgnoreCase));
+                if (infoEntry != null)
+                {
+                    using (var reader = new StreamReader(infoEntry.Open(), true))
+                    {
+                        string line;
+                        Match m;
+                        while ((line = reader.ReadLine()) != null)
+                        {
+                            // Retrieve requirement coverage
+                            // <Blocks HLR-Based-ReqCoveragePercent="N/A" LLRandDerived-ReqCoveragePercent="100.000" 
+                            //         Stateflow-HLR-Based-ReqCoveragePercent="N/A" Stateflow-LLR-Based-ReqCoveragePercent="N/A">
+                            if ((m = Regex.Match(line, @"<Blocks\s.*HLR-Based-ReqCoveragePercent=""([0-9\.]+)""")).Success)
+                                infoText += $" HLR coverage is { m.Groups[1].Value } %.";
+                            if ((m = Regex.Match(line, @"<Blocks\s.*LLRandDerived-ReqCoveragePercent=""([0-9\.]+)""")).Success)
+                                infoText += $" LLR coverage is { m.Groups[1].Value } %.";
+                            if ((m = Regex.Match(line, @"<Blocks\s.*Stateflow-HLR-Based-ReqCoveragePercent=""([0-9\.]+)""")).Success)
+                                infoText += $" Stateflow HLR coverage is { m.Groups[1].Value } %.";
+                            if ((m = Regex.Match(line, @"<Blocks\s.*Stateflow-LLR-Based-ReqCoveragePercent=""([0-9\.]+)""")).Success)
+                                infoText += $" Stateflow LLR coverage is { m.Groups[1].Value } %.";
+                        }
+                    }
+                }
+                infoEntry = archive.Entries.FirstOrDefault(e => e.FullName.StartsWith(".adapter/stdout_analysis_"));
+                if (infoEntry != null)
+                {
+                    using (var reader = new StreamReader(infoEntry.Open(), true))
+                    {
+                        string line = "";
+                        while (reader.EndOfStream == false)
+                        {
+                            line = reader.ReadLine();
+                            if (line.StartsWith("HiLiTE finished normally"))
+                                infoText += $" { line }";
+                        }
+                        if (! infoText.Contains("HiLiTE finished normally"))
+                            infoText += $" HiLiTE does not finished normally.";
+                    }
+                }
+            }
+            return infoText;
+        }
+    
 
         static public string runRemotely(ServerAddress address, InputFile plan, Dictionary<string, string> parameters)
         {

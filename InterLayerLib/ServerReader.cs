@@ -41,7 +41,7 @@ namespace InterLayerLib
 
         public void Load(string fileName, AutomationServerBag asb)
         {
-            asb.Clear();
+            asb.EARS();
             XmlDocument reader = new XmlDocument();
             reader.Load(fileName);
 

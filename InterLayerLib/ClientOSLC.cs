@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
 using System.Runtime;
+using System.Text.RegularExpressions;
 
 namespace InterLayerLib
 {
@@ -25,7 +26,7 @@ namespace InterLayerLib
         /// <returns>parsed xml representation of the created resource</returns>
         public XmlDocument createResource(string resourceXmlToCreate, string creationUri)
         {
-            // build the HTTP POST request
+            // Build the HTTP POST request
             var httpRequest = new HttpRequestMessage(HttpMethod.Post, "");
             httpRequest.Content = new StringContent(resourceXmlToCreate, Encoding.UTF8, "application/xml");
             httpRequest.Headers.Add("Accept", "application/rdf+xml");
@@ -33,17 +34,13 @@ namespace InterLayerLib
             // Send the POST request
             Tuple<String, HttpStatusCode> responseTuple = WebUtility.waitedQueryWithStatusCode(creationUri, httpRequest);
             string response = responseTuple.Item1;
-            HttpStatusCode statusCode = responseTuple.Item2;
-            if (response.Equals("Query failed.")) // error from the .waitedQuery()
+            // If the server is not running
+            if (response.Equals("Query failed.") || response.Trim() == "")
             {
-                throw new Exception("ClientOSLC POST failed - error in client waitedQuery\n" +
-                    $"Error msg: { response }\nStatus code: { statusCode }");
+                // Try different server
+                return null;
             }
-            else if (statusCode != HttpStatusCode.Created || response.Contains("failed") || response.Contains("oslc:Error"))
-            {
-                throw new Exception("ClientOSLC POST failed\n" +
-                    $"Error msg: { response }\nStatus code: { statusCode }");
-            }
+            WebUtility.ThrowExceptionIfFailed(response, "POST Create Resource", $"{ System.Text.RegularExpressions.Regex.Replace(creationUri, "(:[0-9]+)", "$1\n") } get status code: { responseTuple.Item2 } and ");
 
             // parse to XML
             XmlDocument responseXML = new XmlDocument();
@@ -92,23 +89,44 @@ namespace InterLayerLib
             return responseXML;
         }
 
+        public delegate void AutomationRequestEvent(string status);
+
         /// <summary> 
         /// Execute a unit of automation offered by the Universal VeriFIT Adapter and get its result.
         /// Will block until the automation is finished.
         /// </summary>
-        /// <param name="autoRequestXml">xml of the OSLC resource including the rdf:RDF top level element and namespace definitions</param>
+        /// <param name="AutomationRequestXml">xml of the OSLC resource including the rdf:RDF top level element and namespace definitions</param>
         /// <param name="creationUri">URL of the destinaion creation factory</param>
         /// <returns>parsed xml representation of the Automation Result</returns>
-        static public XmlDocument UniversalVeriFitAdapter_SendAutoRequestAndGetAutoResult(string autoRequestXml, string creationUri, CancellationToken cancellationToken = default(CancellationToken))
+        static public XmlDocument UniversalVeriFitAdapter_SendAutomationRequestAndGetAutomationResult(string AutomationRequestXml, string creationUri, AutomationRequestEvent are = null, CancellationToken cancellationToken = default(CancellationToken))
         {
-            ClientOSLC client = new ClientOSLC();
+            //"http://10.178.243.56:18081/compilation/services/resources/createAutomationRequest"
+            //Regex serverAddressRegex = new Regex(@"^(?<=https?://)[\.\w]+(?=(:\d+)?(/.*)|($))");
+            Regex serverAddressRegex = new Regex(@"(?<=https?://)[\.\w]+(?=((:|/).*)|$)");
+
+            Match serverAddressMatch = serverAddressRegex.Match(creationUri); 
+
+            string serverAddress = serverAddressMatch.Success ? serverAddressMatch.Value : null;
+
+
+            if (are != null)
+            {
+
+                are("connecting to " + ((serverAddress == null) ? "server":serverAddress));
+            }
+
+                ClientOSLC client = new ClientOSLC();
 
             // first send the Automation Request
-            XmlDocument createdAutoRequestXml = client.createResource(autoRequestXml, creationUri);
+            XmlDocument createdAutomationRequestXml = client.createResource(AutomationRequestXml, creationUri);
+            if (createdAutomationRequestXml == null) // try different server
+            {
+                return null;
+            }
 
             // extract the producedAutomationResult property from the AutomationRequest
             string producedAutomationResult = "";
-            XmlNodeList childNodes = createdAutoRequestXml.GetElementsByTagName("oslc_auto:AutomationRequest")[0].ChildNodes;
+            XmlNodeList childNodes = createdAutomationRequestXml.GetElementsByTagName("oslc_auto:AutomationRequest")[0].ChildNodes;
             foreach (XmlNode child in childNodes)
             {
                 if (child.Name == "oslc_auto:producedAutomationResult")
@@ -121,37 +139,49 @@ namespace InterLayerLib
                 throw new Exception("UniversalVeriFitAdapter: The created AutomationRequest is missing a producedAutomationResult property.");
 
             // wait for the destination adapter to finish creating resources
-            System.Threading.Thread.Sleep(1000); // 1 sec
+            Thread.Sleep(1000); // 1 sec
 
             // GET the produced Automation Result -- poll until the state is "complete"
             string resultState = "";
-            XmlDocument autoResultXml = new XmlDocument();
+            XmlDocument AutomationResultXml = new XmlDocument();
             while (!resultState.Equals("http://open-services.net/ns/auto#complete"))
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
                     // TO-DO: do some clean up
-                    throw new TaskCanceledException("UniversalVeriFitAdapter_SendAutoRequestAndGetAutoResultcCanceled");
+                    are("canceled");
+                    throw new TaskCanceledException("UniversalVeriFitAdapter_SendAutomationRequestAndGetAutomationResultcCanceled");
                 }
                 resultState = "";
-                autoResultXml = client.getResource(producedAutomationResult);
-                if (autoResultXml == null)
+                AutomationResultXml = client.getResource(producedAutomationResult);
+                if (AutomationResultXml == null)
                 {
                     // resource was not found
                     // --> sleep to let the destination adapter finish and then try again one more time
-                    System.Threading.Thread.Sleep(5000); // 5 sec TODO tweak the duration
-                    autoResultXml = client.getResource(producedAutomationResult);
-                    if (autoResultXml == null)
+                    Thread.Sleep(5000); // 5 sec TODO tweak the duration
+                    AutomationResultXml = client.getResource(producedAutomationResult);
+                    if (AutomationResultXml == null)
                         throw new Exception("UniversalVeriFitAdapter: The produced Automation Result was not found.");
                 }
 
                 // extract the state property from the AutomationResult
-                childNodes = autoResultXml.GetElementsByTagName("oslc_auto:AutomationResult")[0].ChildNodes;
+                childNodes = AutomationResultXml.GetElementsByTagName("oslc_auto:AutomationResult")[0].ChildNodes;
                 foreach (XmlNode child in childNodes)
                 {
                     if (child.Name == "oslc_auto:state")
                     {
                         resultState = child.Attributes["rdf:resource"].Value;
+                        // notifying about the result state status if caller cares (setted up the are method)
+                        if (are != null)
+                        {
+                            string[] splitLine = resultState.Split('#');
+                            if(splitLine.Length > 1)
+                            {
+                                are(splitLine[splitLine.Length - 1].Replace("complete","completed").Replace("inProgress", "generation in progress")
+                                    + ((serverAddress == null) ? "" : " - " + serverAddress));
+                                //are(splitLine[splitLine.Length - 1]);
+                            }
+                        }
                         break;
                     }
                 }
@@ -160,12 +190,12 @@ namespace InterLayerLib
 
                 // sleep before polling again (only if this is not the last iteration)
                 if (!resultState.Equals("http://open-services.net/ns/auto#complete"))
-                    System.Threading.Thread.Sleep(1000); // 1 sec
+                    Thread.Sleep(1000); // 1 sec
             }
 
             // extract the verdict property from the Automation Result
             string resultVerdict = "";
-            childNodes = autoResultXml.GetElementsByTagName("oslc_auto:AutomationResult")[0].ChildNodes;
+            childNodes = AutomationResultXml.GetElementsByTagName("oslc_auto:AutomationResult")[0].ChildNodes;
             foreach (XmlNode child in childNodes)
             {
                 if (child.Name == "oslc_auto:verdict")
@@ -180,10 +210,10 @@ namespace InterLayerLib
             // check the verdict (can be passed, failed, or unavailable)
             if (!resultVerdict.Equals("http://open-services.net/ns/auto#passed"))
             {
-                throw new Exception("Automation Result verdict was not passed! It was: " + resultVerdict); // TODO handle fail
+                //throw new Exception($"Automation Result verdict was not passed! It was: { resultVerdict }."); // TODO handle fail
             }
 
-            return autoResultXml;    
+            return AutomationResultXml;    
         }
     }
 }

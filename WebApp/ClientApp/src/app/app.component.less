@@ -1,11 +1,14 @@
 @primaryBasicColor : #1792E5;
 @lightenedWeight : 20%;
 @darkenedWeight : 20%;
+@veryLightenedWeight : 50%;
 @primaryBasicColorLightened : mix(#FFFFFF, @primaryBasicColor, @lightenedWeight);
 @primaryBasicColorDarkened : mix(#000000, @primaryBasicColor, @darkenedWeight);
+@primaryBasicColorVeryLightened : mix(#FFFFFF, @primaryBasicColor, @veryLightenedWeight);
 
 @warningColor : #FFBF00;
 @errorColor: red;
+@backgroundGray: #CCCCCC;
 
 // @rgbaBlend(@backgroundColor: #AAAAAAAA, @foregroundColor: #BBBBBBBB) : rgba(
 //     red(@backgroundColor)*alpha(@backgroundColor)*(1-alpha(@foregroundColor)) + red(@foregroundColor)*alpha(@foregroundColor),
@@ -30,14 +33,13 @@ color: red;
     color: @warningColor;
 }
 
-#bodyFader {
+.bodyFader {
     background-color: #AAAAAAAA;
     position: absolute;
     left: 0px;
     top: 0px;
     width: 100%;
     height: 100%;
-    z-index: 10001;
 }
 
 .loadFile {
@@ -151,8 +153,28 @@ tr td {
     z-index: 10000;
 }
 
+.zHighestPlus1 {
+    z-index: 10000;
+}
+
+.zAlmostTop {
+    z-index: 99998;
+}
+
+.zAlmostTopPlus1 {
+    z-index: 99999;
+}
+
 .zTop {
     z-index: 100000;
+}
+
+.zTopPlus1 {
+    z-index: 100001;
+}
+
+.zTopTop {
+    z-index: 1000000;
 }
 
 
@@ -290,24 +312,32 @@ table#verificationTable tbody tr td.Defect
     position: absolute;
     width: 100%;
     height: 100%;
+    top: 0;
+    left: 0;
     z-index: 9999;
     pointer-events: none;
 }
 
-.processing-fill-btn-primary {
+.processing-fill-primary {
     background: linear-gradient(90deg,@primaryBasicColor, @primaryBasicColor, @primaryBasicColorLightened, @primaryBasicColor, @primaryBasicColor);
     background-size: 400% 100%;
     background-repeat: no-repeat;
 }
 
-.processing-fill-btn-primary:hover {
+.processing-fill-primary:hover {
     background: linear-gradient(90deg,@primaryBasicColorDarkened, @primaryBasicColorDarkened,  @primaryBasicColor, @primaryBasicColorDarkened, @primaryBasicColorDarkened);
     background-size: 400% 100%;
     background-repeat: no-repeat;
 }
 
-.processing-fill-btn-secondary {
+.processing-fill-secondary {
     background: linear-gradient(90deg, #FFFFFF, #FFFFFF, mix(@primaryBasicColor, #FFFFFF, @lightenedWeight), #FFFFFF, #FFFFFF);
+    background-size: 400% 100%;
+    background-repeat: no-repeat;
+}
+
+.processing-fill-secondary-seethru {
+    background: linear-gradient(90deg, #FFFFFF00, #FFFFFF00, mix(@primaryBasicColor, #FFFFFF01, @lightenedWeight), #FFFFFF00, #FFFFFF00);
     background-size: 400% 100%;
     background-repeat: no-repeat;
 }
@@ -378,15 +408,21 @@ table#verificationTable tbody tr td.Defect
 .btn-table {
     border-radius: 50%;
     position: relative;
-    color: white;
     padding: 20%;
 }
 
 .btn-table-primary {
+    color: white;
     background-color: @primaryBasicColor;
 }
 
+.btn-table-secondary {
+    color: @primaryBasicColor;
+    background-color: white;
+}
+
 .btn-table-close {
+    color: white;
     background-color: red;
 }
 
@@ -422,4 +458,196 @@ table#verificationTable tbody tr td.Defect
 
 .horizontalyCenterText {
     text-align: center;
+}
+
+tr.border_bottom td {
+    border-bottom: 1px solid @primaryBasicColor;
+}
+
+tr.border_top td {
+    border-top: 1px solid @primaryBasicColor;
+}
+
+tr.border_side td {
+    border-left: 1px solid @primaryBasicColor;
+    border-right: 1px solid @primaryBasicColor;
+}
+
+.file-view-window {
+    width: 90%;
+    height: 90%;
+    position: fixed;
+    top: 5%;
+    left: 5%;
+    background-color: @backgroundGray;
+    border-radius: 12px;
+    
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px;
+}
+
+// .file-view {
+//     position: relative;
+//     height: 100%;
+//     width: 100%;
+//     display: flex;
+//     flex-direction: column;
+//     align-items: stretch;
+//     padding: 16px;
+// }
+
+.file-view-control {
+    flex: none;
+    display: flex;
+    flex-direction: row;
+    padding: 0px 12px 12px 12px;
+}
+
+@fileViewContentBorderRadius : 12px;
+
+.file-view-content {
+    flex: 1 1 auto;
+    border-radius: @fileViewContentBorderRadius;
+    border: 1px solid @primaryBasicColor!important;
+    background-color: white;
+    position: relative;
+}
+
+.file-view-content>iframe {
+    border-radius: @fileViewContentBorderRadius;
+    background-color: white;
+    height:100%;
+    width:100%;
+    top: 0px;
+    left: 0px;
+}
+
+.file-view-content>div {
+    border-radius: @fileViewContentBorderRadius;
+    height:100%;
+    width:100%;
+    top: 0px;
+    left: 0px;
+    position: absolute;
+}
+
+.file-view-title {
+    text-align: center;
+    align-self: center;
+    flex: 1 1 auto;
+}
+
+.btn-close-file-view {
+    border-radius: 50%;
+    color: white;
+    background-color: red;
+    align-self: center;
+    padding: 12px;
+    touch-action: manipulation;
+    cursor: pointer;
+    transition: opacity .5s ease;
+    opacity: 1;
+}
+
+.btn-close-file-view:hover {
+    opacity: 0.7;
+    transition: opacity .5s ease;
+}
+
+.doubleclick-area {
+    touch-action: manipulation;
+    cursor: pointer;
+}
+
+tr:hover>.primary-backgroud-on-tr-hover {
+    background-color: @primaryBasicColorVeryLightened;
+}
+
+.button-appear-on-tr-td-hover {
+    visibility: hidden;
+    opacity: 0;
+}
+
+tr:hover>td>.button-appear-on-tr-td-hover {
+    visibility: visible;
+    transition: opacity 2s ease;
+    transition-delay: .5s;
+    -webkit-transition: opacity 2s ease;
+    -webkit-transition-delay: .5s;
+    -o-transition: opacity 2s ease;
+    -o-transition-delay: .5s;
+    opacity: 1;
+}
+
+.shrunk-to-minimum {
+    width: 1%;
+    white-space: nowrap;
+}
+
+.logingInInfo {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%); 
+    background-color: white;
+    color: @primaryBasicColor;
+    border: 3px;
+    border-radius: 50vh;
+    border-color: @primaryBasicColor;
+    padding: 0em 4em;
+}
+
+.toust {
+    position: fixed;
+    height: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000002;
+    background-color: #000000AA;
+    color: #FFFFFFCC;
+    padding: 5px;
+    pointer-events: none;
+    margin: 5px;
+    border-radius: 5px;
+    border-width: 3px;
+    border-color: #FFFFFFCC;
+    opacity: 0%;
+    transition: opacity 0.5s ease 0s;
+}
+
+
+.toust.toustAnimate {
+    transition: opacity 1s ease 0s;
+    opacity: 80%;
+}
+
+@-webkit-keyframes toustAnimationShow {
+    to {opacity:100%}
+}
+@-moz-keyframes toustAnimationShow {
+    to {opacity:100%}
+}
+@-o-keyframes toustAnimationShow {
+    to {opacity:100%}
+}
+@keyframes toustAnimationShow {
+    to {opacity:100%}
+}
+
+@-webkit-keyframes toustAnimationHide {
+    to {opacity:0%}
+}
+@-moz-keyframes toustAnimationHide {
+    to {opacity:0%}
+}
+@-o-keyframes toustAnimationHide {
+    to {opacity:0%}
+}
+@keyframes toustAnimationHide {
+    to {opacity:0%}
+}
+
+#testCasesTable, #resultsArea, #systemArea, #workArea {
+    position: relative;
 }

@@ -6,7 +6,7 @@ import { AppComponent } from './app.component'
 const routes: Routes = [/*{path: 'WebGUI', component: AppComponent}*/];
 
 @NgModule({
-  imports: [RouterModule.forRoot(routes)],
+  imports: [RouterModule.forRoot(routes, { relativeLinkResolution: 'legacy' })],
   exports: [RouterModule]
 })
 export class AppRoutingModule { }
